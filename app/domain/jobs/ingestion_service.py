@@ -4,8 +4,10 @@ from typing import Any
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.jobs.normalizer import normalize_record
 from app.ingestion.base import AdapterError, SourceAdapter, with_retries
 from app.ingestion.models import IngestionRun
+from app.repositories.jobs import JobRepository
 from app.repositories.sources import SourceRepository
 
 
@@ -19,6 +21,7 @@ class IngestionService:
         self.repository = repository
         self.adapters = adapters
         self.redis = redis
+        self.job_repository = JobRepository()
 
     async def start_run(self, session: AsyncSession, source_id: uuid.UUID) -> IngestionRun:
         source = await self.repository.get(session, source_id)
@@ -43,6 +46,7 @@ class IngestionService:
         config: dict[str, Any],
         kind: str,
         source_id: uuid.UUID | None = None,
+        company_name: str | None = None,
     ) -> None:
         adapter = self.adapters[kind]
         fetched: list[Any] = []
@@ -56,6 +60,16 @@ class IngestionService:
             run = await self.repository.get_run(session, run_id)
             if run is not None:
                 malformed_count = getattr(adapter, "malformed_count", 0)
+                created_count = updated_count = duplicate_count = 0
+                if source_id is not None and company_name is not None:
+                    for record in fetched:
+                        candidate = normalize_record(record, company_name)
+                        _, created, changed = await self.job_repository.upsert(
+                            session, source_id, candidate
+                        )
+                        created_count += int(created)
+                        updated_count += int(changed)
+                        duplicate_count += int(not created and not changed)
                 await self.repository.finish_run(
                     session,
                     run,
@@ -63,6 +77,9 @@ class IngestionService:
                     fetched_count=len(fetched),
                     error_count=malformed_count,
                     error_summary={"malformed_records": malformed_count} if malformed_count else {},
+                    created_count=created_count,
+                    updated_count=updated_count,
+                    duplicate_count=duplicate_count,
                 )
         except AdapterError as error:
             run = await self.repository.get_run(session, run_id)

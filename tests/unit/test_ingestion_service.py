@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.domain.jobs.ingestion_service import IngestionService
-from app.ingestion.base import AdapterError, with_retries
+from app.ingestion.base import AdapterError, RawJobRecord, with_retries
 from app.ingestion.models import IngestionRun, Source
 
 
@@ -65,7 +65,7 @@ async def test_with_retries_success_retry_and_failures():
 
 class FakeAdapter:
     async def fetch(self, config):
-        yield object()
+        yield RawJobRecord("1", "Backend", "Python", "https://apply")
 
 
 class FailingAdapter:
@@ -74,13 +74,21 @@ class FailingAdapter:
         yield  # pragma: no cover
 
 
+class EmptyAdapter:
+    async def fetch(self, config):
+        if False:
+            yield None
+
+
 @pytest.mark.asyncio
 async def test_ingestion_execution_records_success_and_failure():
     repository = AsyncMock()
     run = IngestionRun(id=uuid.uuid4(), source_id=uuid.uuid4(), status="running")
     repository.get_run.return_value = run
     success = IngestionService(repository, {"demo": FakeAdapter()})
-    await success.execute_run(AsyncMock(), run.id, {}, "demo")
+    success.job_repository = AsyncMock()
+    success.job_repository.upsert.return_value = (object(), True, False)
+    await success.execute_run(AsyncMock(), run.id, {}, "demo", uuid.uuid4(), "Acme")
     assert repository.finish_run.await_args.kwargs["status"] == "succeeded"
 
     repository.reset_mock()
@@ -89,6 +97,12 @@ async def test_ingestion_execution_records_success_and_failure():
     with pytest.raises(AdapterError):
         await failure.execute_run(AsyncMock(), run.id, {}, "demo")
     assert repository.finish_run.await_args.kwargs["status"] == "failed"
+
+    repository.reset_mock()
+    repository.get_run.return_value = run
+    empty = IngestionService(repository, {"demo": EmptyAdapter()})
+    await empty.execute_run(AsyncMock(), run.id, {}, "demo", uuid.uuid4(), "Acme")
+    await success.execute_run(AsyncMock(), run.id, {}, "demo", uuid.uuid4())
 
     repository.reset_mock()
     repository.get_run.return_value = None

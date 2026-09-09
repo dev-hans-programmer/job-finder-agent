@@ -50,6 +50,9 @@ class SourceRepository:
         fetched_count: int,
         error_count: int = 0,
         error_summary: dict | None = None,
+        created_count: int = 0,
+        updated_count: int = 0,
+        duplicate_count: int = 0,
     ) -> IngestionRun:
         run.status = status
         run.completed_at = datetime.now(timezone.utc)
@@ -57,6 +60,9 @@ class SourceRepository:
         run.normalized_count = fetched_count
         run.error_count = error_count
         run.error_summary = error_summary or {}
+        run.created_count = created_count
+        run.updated_count = updated_count
+        run.duplicate_count = duplicate_count
         await session.commit()
         await session.refresh(run)
         return run

@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app.config import get_settings
+from app.domain.jobs import models as _job_models  # noqa: F401
 from app.domain.preferences.models import Base
+from app.ingestion import models as _ingestion_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

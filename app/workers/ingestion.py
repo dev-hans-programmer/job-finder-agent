@@ -15,7 +15,9 @@ async def dispatch_ingestion_run(
         if source is None:
             return
         try:
-            await service.execute_run(session, run_id, source.config, source.kind, source_id)
+            await service.execute_run(
+                session, run_id, source.config, source.kind, source_id, source.name
+            )
         except Exception:
             # The run record contains the failure details; background task failures
             # must not turn an already accepted HTTP request into a 500 response.

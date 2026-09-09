@@ -9,6 +9,9 @@ from app.domain.jobs.normalizer import JobCandidate
 
 
 class JobRepository:
+    async def get(self, session: AsyncSession, job_id: uuid.UUID) -> Job | None:
+        return await session.get(Job, job_id)
+
     async def find_existing(
         self, session: AsyncSession, source_id: uuid.UUID, candidate: JobCandidate
     ) -> Job | None:

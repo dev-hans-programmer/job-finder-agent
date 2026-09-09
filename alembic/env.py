@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.config import get_settings
 from app.domain.jobs import models as _job_models  # noqa: F401
+from app.domain.matching import models as _matching_models  # noqa: F401
 from app.domain.preferences.models import Base
 from app.ingestion import models as _ingestion_models  # noqa: F401
 

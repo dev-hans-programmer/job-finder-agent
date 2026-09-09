@@ -1,12 +1,12 @@
 # Tasks
 
-- [ ] Define match result schema and decision enums.
-- [ ] Implement rule engine and exclusion evidence.
-- [ ] Implement pure weighted scorer and golden cases.
-- [ ] Add match-results Alembic migration.
-- [ ] Implement embedding interface/cache.
-- [ ] Implement LLM structured-output adapter and safe fallback.
-- [ ] Implement match service and persistence.
-- [ ] Add unit tests for all score/exclusion/provider branches.
-- [ ] Add PostgreSQL and API integration tests.
-- [ ] Add end-to-end matching fixtures and enforce 100% coverage.
+- [x] Define match result schema and decision enums.
+- [x] Implement rule engine and exclusion evidence.
+- [x] Implement pure weighted scorer and golden cases.
+- [x] Add match-results Alembic migration.
+- [x] Implement embedding interface/cache.
+- [x] Implement LLM structured-output adapter and safe fallback.
+- [x] Implement match service and persistence.
+- [x] Add unit tests for all score/exclusion/provider branches.
+- [x] Add PostgreSQL and API integration tests.
+- [x] Add end-to-end matching fixtures and enforce 100% coverage.

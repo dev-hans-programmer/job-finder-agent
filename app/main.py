@@ -4,6 +4,8 @@ from fastapi import FastAPI
 
 from app.api.v1.health import router as health_router
 from app.api.v1.preferences import router as preferences_router
+from app.api.v1.runs import router as runs_router
+from app.api.v1.sources import router as sources_router
 from app.config import Settings, get_settings
 from app.db import RuntimeResources
 from app.observability.errors import AppError, app_error_handler
@@ -28,6 +30,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(AppError, app_error_handler)
     app.include_router(health_router)
     app.include_router(preferences_router)
+    app.include_router(sources_router)
+    app.include_router(runs_router)
     return app
 
 

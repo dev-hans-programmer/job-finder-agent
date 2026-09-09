@@ -14,4 +14,4 @@ def test_settings_require_database_url() -> None:
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.delenv("DATABASE_URL", raising=False)
         with pytest.raises(ValidationError):
-            Settings(redis_url="redis://x")
+            Settings(_env_file=None, redis_url="redis://x")

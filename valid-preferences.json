@@ -1,0 +1,11 @@
+{
+  "titles": ["Senior Software Engineer", "Backend Engineer"],
+  "skills": {"must_have": ["Python", "PostgreSQL"], "nice_to_have": ["AWS", "Redis"]},
+  "locations": {"preferred": ["Mumbai", "Bangalore"]},
+  "work_mode": ["remote", "hybrid"],
+  "experience": {"min": 7, "max": 15},
+  "salary": {"minimum_lpa": 40},
+  "companies": {"preferred": ["Razorpay", "Stripe"]},
+  "exclusions": ["frontend", "PHP"],
+  "matching": {"minimum_score": 75}
+}

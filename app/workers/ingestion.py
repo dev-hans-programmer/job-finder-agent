@@ -1,0 +1,1 @@
+"""Ingestion worker boundary."""

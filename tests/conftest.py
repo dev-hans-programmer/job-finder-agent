@@ -1,7 +1,9 @@
 import os
 
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql+asyncpg://jobradar:jobradar@localhost:5432/jobradar"
+)
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,10 +14,7 @@ from app.main import create_app
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(
-        database_url="postgresql+asyncpg://test:test@localhost:5432/test",
-        redis_url="redis://localhost:6379/15",
-    )
+    return Settings()
 
 
 @pytest.fixture

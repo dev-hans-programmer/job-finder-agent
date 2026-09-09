@@ -1,4 +1,4 @@
-from app.errors import AppError, app_error_handler, error_payload
+from app.observability.errors import AppError, app_error_handler, error_payload
 
 
 def test_error_payload_defaults_details() -> None:

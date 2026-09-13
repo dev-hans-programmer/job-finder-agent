@@ -30,6 +30,8 @@ def configure_telemetry(settings: Any) -> TracerProvider | None:
     resource = Resource.create(
         {
             SERVICE_NAME: settings.otel_service_name,
+            "service.version": getattr(settings, "app_version", "unknown"),
+            "service.commit_sha": getattr(settings, "git_sha", "unknown"),
             "deployment.environment": settings.app_env,
         }
     )

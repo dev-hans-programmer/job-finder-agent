@@ -9,6 +9,9 @@ class Settings(BaseSettings):
 
     app_env: str = "local"
     app_name: str = "job-radar-agent"
+    app_version: str = "0.1.0"
+    git_sha: str = "unknown"
+    build_timestamp: str = "unknown"
     log_level: str = "INFO"
     database_url: str = Field(..., min_length=1)
     redis_url: str = Field(..., min_length=1)

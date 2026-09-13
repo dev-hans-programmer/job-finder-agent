@@ -11,6 +11,7 @@ from app.api.v1.preferences import router as preferences_router
 from app.api.v1.runs import router as runs_router
 from app.api.v1.sources import router as sources_router
 from app.api.v1.users import router as users_router
+from app.api.v1.version import router as version_router
 from app.api.v2.health import router as health_v2_router
 from app.api.v2.preferences import router as preferences_v2_router
 from app.config import Settings, get_settings
@@ -50,6 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(notifications_router)
     app.include_router(metrics_router)
     app.include_router(users_router)
+    app.include_router(version_router)
     app.include_router(auth_router)
     app.include_router(health_v2_router)
     app.include_router(preferences_v2_router)

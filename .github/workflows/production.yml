@@ -36,6 +36,10 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.image.outputs.image }}:${{ steps.tag.outputs.tag }}
+          build-args: |
+            APP_VERSION=${{ steps.tag.outputs.tag }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_TIMESTAMP=${{ github.event.head_commit.timestamp || github.run_started_at }}
 
   deploy:
     needs: build

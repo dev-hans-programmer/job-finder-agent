@@ -9,5 +9,11 @@ RUN uv sync --frozen --no-dev
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
+ARG APP_VERSION=0.1.0
+ARG GIT_SHA=unknown
+ARG BUILD_TIMESTAMP=unknown
+ENV APP_VERSION="$APP_VERSION" \
+    GIT_SHA="$GIT_SHA" \
+    BUILD_TIMESTAMP="$BUILD_TIMESTAMP"
 ENV PATH="/service/.venv/bin:$PATH"
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -18,6 +18,7 @@ from app.auth.schemas import (
 )
 from app.auth.security import hash_refresh_token
 from app.config import Settings, get_settings
+from app.dependencies.audit import get_audit_service
 from app.dependencies.auth import get_current_user, require_role
 from app.dependencies.database import get_session
 from app.domain.auth.service import AuthService
@@ -38,6 +39,19 @@ async def user_response(session, user, service: AuthService):
     )
 
 
+async def record_audit(audit_service, session, request, **values):
+    record = getattr(audit_service, "record", None)
+    if record is None:
+        return
+    await record(
+        session,
+        ip_address=request.client.host if request and request.client else None,
+        user_agent=request.headers.get("User-Agent") if request else None,
+        request_id=getattr(getattr(request, "state", None), "request_id", None),
+        **values,
+    )
+
+
 @router.post(
     "/auth/register",
     response_model=SuccessResponse[UserResponse],
@@ -48,13 +62,32 @@ async def register(
     request: Request,
     session=Depends(get_session),
     service: AuthService = Depends(get_auth_service),
+    audit_service=Depends(get_audit_service),
 ):
     try:
         user = await service.register(session, data.email, data.password)
     except ValueError as error:
+        await record_audit(
+            audit_service,
+            session,
+            request,
+            action="user.registration.failed",
+            resource_type="user",
+            success=False,
+            metadata={"reason": str(error)},
+        )
         raise HTTPException(status_code=409, detail=str(error)) from error
     if getattr(service.settings, "auth_email_verification_enabled", False):
         await service.issue_code(session, data.email, "email_verification")
+    await record_audit(
+        audit_service,
+        session,
+        request,
+        action="user.registered",
+        resource_type="user",
+        resource_id=user.id,
+        actor_user_id=user.id,
+    )
     return success_response(await user_response(session, user, service), request)
 
 
@@ -64,6 +97,7 @@ async def login(
     request: Request,
     session=Depends(get_session),
     service: AuthService = Depends(get_auth_service),
+    audit_service=Depends(get_audit_service),
 ):
     try:
         user = await service.authenticate(session, data.email, data.password)
@@ -77,7 +111,25 @@ async def login(
             },
         )
     except ValueError as error:
+        await record_audit(
+            audit_service,
+            session,
+            request,
+            action="user.login.failed",
+            resource_type="user",
+            success=False,
+            metadata={"reason": str(error)},
+        )
         raise HTTPException(status_code=401, detail=str(error)) from error
+    await record_audit(
+        audit_service,
+        session,
+        request,
+        action="user.logged_in",
+        resource_type="user",
+        resource_id=user.id,
+        actor_user_id=user.id,
+    )
     return success_response(TokenResponse(access_token=access, refresh_token=refresh), request)
 
 
@@ -87,11 +139,28 @@ async def refresh(
     request: Request,
     session=Depends(get_session),
     service: AuthService = Depends(get_auth_service),
+    audit_service=Depends(get_audit_service),
 ):
     try:
         access, refresh_token = await service.refresh(session, data.refresh_token)
     except ValueError as error:
+        await record_audit(
+            audit_service,
+            session,
+            request,
+            action="auth.token.refresh_failed",
+            resource_type="refresh_token",
+            success=False,
+            metadata={"reason": str(error)},
+        )
         raise HTTPException(status_code=401, detail=str(error)) from error
+    await record_audit(
+        audit_service,
+        session,
+        request,
+        action="auth.token.refreshed",
+        resource_type="refresh_token",
+    )
     return success_response(
         TokenResponse(access_token=access, refresh_token=refresh_token), request
     )
@@ -103,9 +172,18 @@ async def request_password_reset(
     request: Request,
     session=Depends(get_session),
     service: AuthService = Depends(get_auth_service),
+    audit_service=Depends(get_audit_service),
 ):
     if getattr(service.settings, "auth_password_reset_enabled", False):
         await service.issue_code(session, data.email, "password_reset")
+    await record_audit(
+        audit_service,
+        session,
+        request,
+        action="user.password_reset.requested",
+        resource_type="user",
+        metadata={"email": data.email.lower()},
+    )
     return success_response(
         {"message": "If the account exists, a reset code has been sent"}, request
     )
@@ -116,13 +194,32 @@ async def confirm_password_reset(
     data: PasswordResetConfirm,
     session=Depends(get_session),
     service: AuthService = Depends(get_auth_service),
+    request: Request = None,
+    audit_service=Depends(get_audit_service),
 ):
     if not getattr(service.settings, "auth_password_reset_enabled", False):
         raise HTTPException(status_code=404, detail="password reset is disabled")
     try:
         await service.reset_password(session, data.email, data.code, data.password)
     except ValueError as error:
+        await record_audit(
+            audit_service,
+            session,
+            request,
+            action="user.password_reset.failed",
+            resource_type="user",
+            success=False,
+            metadata={"reason": str(error)},
+        )
         raise HTTPException(status_code=400, detail=str(error)) from error
+    await record_audit(
+        audit_service,
+        session,
+        request,
+        action="user.password_reset.completed",
+        resource_type="user",
+        metadata={"email": data.email.lower()},
+    )
 
 
 @router.post("/auth/email/verify", status_code=status.HTTP_204_NO_CONTENT)
@@ -130,13 +227,32 @@ async def verify_email(
     data: EmailVerificationInput,
     session=Depends(get_session),
     service: AuthService = Depends(get_auth_service),
+    request: Request = None,
+    audit_service=Depends(get_audit_service),
 ):
     if not getattr(service.settings, "auth_email_verification_enabled", False):
         raise HTTPException(status_code=404, detail="email verification is disabled")
     try:
         await service.verify_email(session, data.email, data.code)
     except ValueError as error:
+        await record_audit(
+            audit_service,
+            session,
+            request,
+            action="user.email_verification.failed",
+            resource_type="user",
+            success=False,
+            metadata={"reason": str(error)},
+        )
         raise HTTPException(status_code=400, detail=str(error)) from error
+    await record_audit(
+        audit_service,
+        session,
+        request,
+        action="user.email_verified",
+        resource_type="user",
+        metadata={"email": data.email.lower()},
+    )
 
 
 @router.post("/auth/email/resend", response_model=SuccessResponse[dict], status_code=202)

@@ -27,6 +27,7 @@ from app.auth.schemas import (
     RoleInput,
 )
 from app.auth.security import create_access_token
+from app.dependencies.audit import get_audit_service
 from app.dependencies.auth import get_current_user, require_role
 
 
@@ -58,6 +59,25 @@ def test_register_login_me_refresh_and_logout(client):
         ).status_code
         == 204
     )
+
+
+def test_auth_requests_create_audit_events(client):
+    email = f"audit-{uuid.uuid4()}@example.com"
+    request_id = "audit-api-request"
+    audit = SimpleNamespace(record=AsyncMock())
+    client.app.dependency_overrides[get_audit_service] = lambda: audit
+    response = client.post(
+        "/api/v1/auth/register",
+        headers={"X-Request-ID": request_id},
+        json={"email": email, "password": "correct horse battery staple"},
+    )
+    assert response.status_code == 201
+    audit.record.assert_awaited_once()
+    values = audit.record.await_args.kwargs
+    assert values["action"] == "user.registered"
+    assert values.get("success", True) is True
+    assert values["request_id"] == request_id
+    assert values.get("metadata", {}) == {}
 
 
 def test_auth_rejects_invalid_credentials_and_tokens(client):

@@ -6,9 +6,8 @@
 
 ## Backup and restore
 
-Create a backup with `docker compose exec postgres pg_dump -U jobradar jobradar > backup.sql`.
-Restore into a disposable database with `cat backup.sql | docker compose exec -T postgres psql -U jobradar jobradar`.
-Verify with `make migrate` and a representative `SELECT` query.
+Create a timestamped backup with `make backup`. Backups are written to `./backups` locally and include a custom-format dump, SHA-256 sidecar, and metadata file. Verify one with `make backup-verify BACKUP=backups/jobradar-....dump`.
+Restore only into a disposable or explicitly approved target with `make restore BACKUP=backups/jobradar-....dump`, then run `make migrate` and representative queries. The automated Compose `backup` service runs this process every `BACKUP_INTERVAL_SECONDS` and retains `BACKUP_RETENTION_DAYS` of local files.
 
 ## Incident procedures
 

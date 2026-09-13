@@ -21,6 +21,7 @@ Implemented capabilities include:
 - Scheduler cadence evaluation and workflow boundaries
 - Password authentication, rotating refresh tokens, `/me`, and configurable RBAC
 - Separate API, worker, and scheduler processes with Celery/Redis task execution
+- Automated PostgreSQL backups with retention, verification, and restore tooling
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.
@@ -171,6 +172,8 @@ Or start the three application containers together:
 make app-up
 make app-logs
 ```
+
+Database backups are written to `./backups` by default. Create or verify one manually with `make backup` and `make backup-verify BACKUP=backups/file.dump`; the Compose `backup` process runs the same operation automatically on the configured interval. Store production backups in external durable storage rather than only on the application host.
 
 The API creates an ingestion run and dispatches a Celery task. Redis brokers the task to the worker, which updates the run. The scheduler dispatches the same task for due sources. Flower provides task and worker monitoring at `http://localhost:5555`.
 

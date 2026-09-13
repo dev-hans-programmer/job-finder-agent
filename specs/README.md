@@ -39,6 +39,8 @@ Tests are organized in three top-level folders: `tests/unit/`, `tests/integratio
 011-separate-processes
     ↓
 012-celery-background-jobs
+    ↓
+013-automated-database-backups
 ```
 
 Specs may be developed in parallel only where their dependency is already implemented. Each spec must leave the repository passing all existing tests.

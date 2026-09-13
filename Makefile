@@ -5,7 +5,7 @@ PYTEST := $(UV) run pytest
 COMPOSE := docker compose
 
 .PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs
-.PHONY: migrate migration run run-api run-worker run-scheduler run-flower run-all test test-unit test-integration test-api coverage lint format check qa clean
+.PHONY: migrate migration run run-api run-worker run-scheduler run-flower backup backup-verify restore run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
 	@printf '%s\n' \
@@ -25,6 +25,9 @@ help:
 	  'run-worker         Run the worker process' \
 	  'run-scheduler      Run the scheduler process' \
 	  'run-flower         Run the Celery monitoring dashboard' \
+	  'backup             Create a PostgreSQL backup' \
+	  'backup-verify      Verify a PostgreSQL backup' \
+	  'restore            Restore a backup into the configured database' \
 	  'run-all            Start all application processes in Docker' \
 	  'test               Run all tests' \
 	  'test-unit          Run unit tests' \
@@ -56,10 +59,10 @@ services-logs:
 	$(COMPOSE) logs -f postgres redis
 
 app-up:
-	$(COMPOSE) up -d --build api worker scheduler flower
+	$(COMPOSE) up -d --build api worker scheduler flower backup
 
 app-down:
-	$(COMPOSE) stop api worker scheduler flower
+	$(COMPOSE) stop api worker scheduler flower backup
 
 app-logs:
 	$(COMPOSE) logs -f api worker scheduler flower
@@ -85,6 +88,17 @@ run-scheduler:
 
 run-flower:
 	$(UV) run celery -A app.workers.celery_app flower --port=5555
+
+backup:
+	$(COMPOSE) run --rm backup python -m app.backup.cli backup
+
+backup-verify:
+	@test -n "$(BACKUP)" || (echo 'Usage: make backup-verify BACKUP=backups/file.dump' && exit 1)
+	$(COMPOSE) run --rm backup python -m app.backup.cli verify "/backups/$$(basename "$(BACKUP)")"
+
+restore:
+	@test -n "$(BACKUP)" || (echo 'Usage: make restore BACKUP=backups/file.dump' && exit 1)
+	$(COMPOSE) run --rm backup python -m app.backup.cli restore "/backups/$$(basename "$(BACKUP)")"
 
 run-all: app-up
 

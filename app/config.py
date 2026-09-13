@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     initial_admin_email: str | None = None
     auth_require_token: bool = False
     scheduler_poll_seconds: int = 30
+    backup_dir: str = "./backups"
+    backup_retention_days: int = 7
+    backup_interval_seconds: int = 86400
 
 
 @lru_cache

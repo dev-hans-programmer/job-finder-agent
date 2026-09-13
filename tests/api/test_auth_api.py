@@ -47,6 +47,7 @@ def test_register_login_me_refresh_and_logout(client):
     me = client.get(
         "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
     )
+
     assert me.status_code == 200 and me.json()["data"]["email"] == email
     refreshed = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert refreshed.status_code == 200
@@ -59,6 +60,27 @@ def test_register_login_me_refresh_and_logout(client):
         ).status_code
         == 204
     )
+
+
+def test_validation_errors_use_consistent_client_friendly_envelope(client):
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "valid@example.com", "password": "short"},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"] == {
+        "code": "VALIDATION_ERROR",
+        "message": "The request contains invalid data",
+        "details": [
+            {
+                "field": "password",
+                "location": "body",
+                "code": "string_too_short",
+                "message": "Password must be at least 12 characters",
+            }
+        ],
+        "request_id": response.headers["X-Request-ID"],
+    }
 
 
 def test_auth_requests_create_audit_events(client):

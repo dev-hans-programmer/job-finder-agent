@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.audit import router as audit_router
@@ -18,7 +19,12 @@ from app.api.v2.health import router as health_v2_router
 from app.api.v2.preferences import router as preferences_v2_router
 from app.config import Settings, get_settings
 from app.db import RuntimeResources
-from app.observability.errors import AppError, app_error_handler
+from app.observability.errors import (
+    AppError,
+    app_error_handler,
+    request_validation_error_handler,
+    unexpected_error_handler,
+)
 from app.observability.logging import configure_logging, request_id_middleware
 from app.observability.rate_limit import rate_limit_middleware
 from app.observability.security import csrf_middleware, security_headers_middleware
@@ -59,6 +65,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.middleware("http")(rate_limit_middleware)
     app.middleware("http")(request_id_middleware)
     app.add_exception_handler(AppError, app_error_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
+    app.add_exception_handler(Exception, unexpected_error_handler)
     app.include_router(health_router)
     app.include_router(preferences_router)
     app.include_router(sources_router)

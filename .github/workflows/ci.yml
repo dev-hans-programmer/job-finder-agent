@@ -3,6 +3,9 @@ on: [push, pull_request]
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@localhost:5432/jobradar
+      REDIS_URL: redis://localhost:6379/0
     services:
       postgres:
         image: postgres:16

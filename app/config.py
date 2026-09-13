@@ -46,6 +46,20 @@ class Settings(BaseSettings):
     auth_lockout_minutes: int = Field(15, ge=1)
     auth_otp_expire_minutes: int = Field(10, ge=1)
     auth_otp_resend_seconds: int = Field(60, ge=1)
+    cors_allowed_origins: str = ""
+    cors_allow_credentials: bool = False
+    security_headers_enabled: bool = True
+    csrf_enabled: bool = False
+    hsts_enabled: bool = False
+
+    def validate_security(self) -> None:
+        if self.app_env in {"staging", "production"}:
+            if len(self.jwt_secret_key) < 32:
+                raise ValueError("JWT_SECRET_KEY must contain at least 32 characters")
+            if self.jwt_secret_key == "local-development-secret-change-me":
+                raise ValueError("JWT_SECRET_KEY must not use the development default")
+        if self.cors_allow_credentials and "*" in self.cors_allowed_origins:
+            raise ValueError("wildcard CORS origins cannot be used with credentials")
 
 
 @lru_cache

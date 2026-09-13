@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
@@ -19,11 +20,13 @@ from app.db import RuntimeResources
 from app.observability.errors import AppError, app_error_handler
 from app.observability.logging import configure_logging, request_id_middleware
 from app.observability.rate_limit import rate_limit_middleware
+from app.observability.security import csrf_middleware, security_headers_middleware
 from app.observability.telemetry import configure_telemetry, instrument_app, instrument_clients
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or get_settings()
+    app_settings.validate_security()
     configure_logging(app_settings.log_level)
     configure_telemetry(app_settings)
     instrument_clients(app_settings)
@@ -40,6 +43,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
     app.state.settings = app_settings
     instrument_app(app, app_settings)
+    origins = [
+        origin.strip() for origin in app_settings.cors_allowed_origins.split(",") if origin.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=app_settings.cors_allow_credentials,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
+    )
+    app.middleware("http")(csrf_middleware)
+    app.middleware("http")(security_headers_middleware)
     app.middleware("http")(rate_limit_middleware)
     app.middleware("http")(request_id_middleware)
     app.add_exception_handler(AppError, app_error_handler)

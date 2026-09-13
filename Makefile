@@ -6,7 +6,7 @@ COMPOSE := docker compose
 STAGING_PROJECT ?= job-radar-staging
 TESTING_PROJECT ?= job-radar-testing
 
-.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down staging-up staging-down staging-migrate staging-smoke test-services-up test-services-down test-migrate test-all db-clean loadtest loadtest-headless release-notes
+.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down staging-up staging-down staging-migrate staging-smoke test-services-up test-services-down test-migrate test-all db-clean loadtest loadtest-headless release-notes security-scan
 .PHONY: migrate migration run run-api run-worker run-scheduler run-flower backup backup-verify restore run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
@@ -113,7 +113,7 @@ test-all:
 
 db-clean:
 	@test "$(CONFIRM)" = "YES" || (echo 'Refusing to clean the local database. Re-run with: make db-clean CONFIRM=YES' && exit 1)
-	$(COMPOSE) exec -T postgres psql -U jobradar -d jobradar -c 'TRUNCATE TABLE users, roles, user_roles, refresh_tokens, preference_profiles, sources, ingestion_runs, jobs, job_source_records, match_results, job_feedback, notification_deliveries CASCADE;'
+	$(COMPOSE) exec -T postgres psql -U jobradar -d jobradar -c 'TRUNCATE TABLE users, roles, user_roles, refresh_tokens, preference_profiles, sources, ingestion_runs, jobs, job_source_records, match_results, job_feedback, notification_deliveries, audit_events CASCADE;'
 	@echo 'Default local database data deleted; schema and Alembic history preserved.'
 
 app-logs:
@@ -192,6 +192,9 @@ loadtest-headless:
 
 release-notes:
 	$(UV) run python scripts/release_notes.py --from-ref "$(FROM_REF)" --to-ref "$${TO_REF:-HEAD}" --version "$${APP_VERSION:-unreleased}" --output "$${RELEASE_OUTPUT:-release-notes.md}"
+
+security-scan:
+	@requirements_file=$$(mktemp); trap 'rm -f "$$requirements_file"' EXIT; $(UV) export --no-dev --format requirements-txt --no-emit-package job-radar-agent > "$$requirements_file"; $(UV) run pip-audit --strict -r "$$requirements_file"
 
 clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +

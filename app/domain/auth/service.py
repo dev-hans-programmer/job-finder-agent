@@ -126,6 +126,8 @@ class AuthService:
             if token is not None:
                 await self.repository.revoke_tokens(session, token.family_id, now)
                 await session.commit()
+            if token is not None and token.revoked_at is not None:
+                raise ValueError("refresh token replay detected")
             raise ValueError("invalid refresh token")
         await self.repository.revoke_tokens(session, token.family_id, now)
         await session.commit()

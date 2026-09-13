@@ -1,0 +1,63 @@
+name: Production deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Existing image tag to deploy; defaults to the commit SHA
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: image
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - id: tag
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+        run: echo "tag=${INPUT_TAG:-${GITHUB_SHA}}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.image }}:${{ steps.tag.outputs.tag }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$PRODUCTION_SSH_KEY" > ~/.ssh/production_key
+          chmod 600 ~/.ssh/production_key
+          ssh-keyscan -H "$PRODUCTION_HOST" >> ~/.ssh/known_hosts
+      - name: Deploy, migrate, and smoke test
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          TAG: ${{ needs.build.outputs.tag }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_APP_DIR: ${{ secrets.PRODUCTION_APP_DIR }}
+        run: |
+          ssh -i ~/.ssh/production_key "$PRODUCTION_USER@$PRODUCTION_HOST" "cd '$PRODUCTION_APP_DIR' && export PRODUCTION_IMAGE='$IMAGE' PRODUCTION_IMAGE_TAG='$TAG' && ./scripts/production-deploy.sh"

@@ -47,6 +47,8 @@ Tests are organized in three top-level folders: `tests/unit/`, `tests/integratio
 015-observability-stack
     ↓
 016-staging-deployment
+    ↓
+017-production-deployment
 ```
 
 Specs may be developed in parallel only where their dependency is already implemented. Each spec must leave the repository passing all existing tests.

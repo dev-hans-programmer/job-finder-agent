@@ -1,0 +1,36 @@
+name: Production rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Known-good production image tag to restore
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$PRODUCTION_SSH_KEY" > ~/.ssh/production_key
+          chmod 600 ~/.ssh/production_key
+          ssh-keyscan -H "$PRODUCTION_HOST" >> ~/.ssh/known_hosts
+      - name: Roll back application image
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_APP_DIR: ${{ secrets.PRODUCTION_APP_DIR }}
+          PRODUCTION_IMAGE: ${{ secrets.PRODUCTION_IMAGE }}
+          PRODUCTION_IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          ssh -i ~/.ssh/production_key "$PRODUCTION_USER@$PRODUCTION_HOST" "cd '$PRODUCTION_APP_DIR' && export PRODUCTION_IMAGE='$PRODUCTION_IMAGE' PRODUCTION_IMAGE_TAG='$PRODUCTION_IMAGE_TAG' && ./scripts/production-rollback.sh"

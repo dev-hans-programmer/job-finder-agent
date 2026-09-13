@@ -204,6 +204,12 @@ make staging-smoke
 
 Staging is available on ports `8001` (API), `3001` (Grafana), `5556` (Flower), `9091` (Prometheus), `3101` (Loki), and `3201` (Tempo). The GitHub Actions staging workflow builds a commit-tagged image, pulls it on the staging host, applies migrations, starts services, and runs smoke tests. Configure the `staging` GitHub Environment with `STAGING_HOST`, `STAGING_USER`, `STAGING_APP_DIR`, and `STAGING_SSH_KEY` secrets.
 
+### Production deployment
+
+Production deployment is approval-gated and uses immutable commit-tagged images. It creates a database backup before migrations, starts the new image, runs smoke tests, and records the successful image tag. A failed deployment automatically rolls back the application image when a previous tag is available. Database schema rollback is an explicit restore operation.
+
+See [docs/production-deployment.md](docs/production-deployment.md) and [Spec 017 QA](specs/017-production-deployment/qa.md).
+
 The API creates an ingestion run and dispatches a Celery task. Redis brokers the task to the worker, which updates the run. The scheduler dispatches the same task for due sources. Flower provides task and worker monitoring at `http://localhost:5555`.
 
 The API is available at:

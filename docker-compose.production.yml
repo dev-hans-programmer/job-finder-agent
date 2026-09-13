@@ -1,0 +1,82 @@
+services:
+  postgres:
+    ports: []
+    volumes:
+      - production_postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jobradar}
+      POSTGRES_USER: ${POSTGRES_USER:-jobradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+  redis:
+    ports: []
+  api:
+    image: ${PRODUCTION_IMAGE:?Set PRODUCTION_IMAGE in .env.production}:${PRODUCTION_IMAGE_TAG:-production}
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:-jobradar}
+      REDIS_URL: redis://redis:6379/0
+      AUTH_REQUIRE_TOKEN: "true"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env.production}
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_SERVICE_NAME: job-radar-production-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+    ports:
+      - "8000:8000"
+  worker:
+    image: ${PRODUCTION_IMAGE:?Set PRODUCTION_IMAGE in .env.production}:${PRODUCTION_IMAGE_TAG:-production}
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:-jobradar}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env.production}
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_SERVICE_NAME: job-radar-production-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+  scheduler:
+    image: ${PRODUCTION_IMAGE:?Set PRODUCTION_IMAGE in .env.production}:${PRODUCTION_IMAGE_TAG:-production}
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:-jobradar}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env.production}
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_SERVICE_NAME: job-radar-production-scheduler
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+  flower:
+    image: ${PRODUCTION_IMAGE:?Set PRODUCTION_IMAGE in .env.production}:${PRODUCTION_IMAGE_TAG:-production}
+    ports:
+      - "127.0.0.1:5555:5555"
+  backup:
+    image: ${PRODUCTION_IMAGE:?Set PRODUCTION_IMAGE in .env.production}:${PRODUCTION_IMAGE_TAG:-production}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:-jobradar}
+      REDIS_URL: redis://redis:6379/0
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./backups-production:/backups
+  migrate:
+    image: ${PRODUCTION_IMAGE:?Set PRODUCTION_IMAGE in .env.production}:${PRODUCTION_IMAGE_TAG:-production}
+    command: alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:-jobradar}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+  prometheus:
+    ports:
+      - "127.0.0.1:9090:9090"
+  grafana:
+    ports:
+      - "127.0.0.1:3000:3000"
+  loki:
+    ports:
+      - "127.0.0.1:3100:3100"
+  tempo:
+    ports:
+      - "127.0.0.1:3200:3200"
+
+volumes:
+  production_postgres_data:

@@ -1,13 +1,17 @@
+import logging
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.db import check_postgres, check_redis
 
 router = APIRouter(tags=["health"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health/live")
 async def live() -> dict[str, str]:
+    logger.info("hasan alio")
     return {"status": "ok"}
 
 

@@ -23,6 +23,7 @@ Implemented capabilities include:
 - Separate API, worker, and scheduler processes with Celery/Redis task execution
 - Automated PostgreSQL backups with retention, verification, and restore tooling
 - Optional OpenTelemetry tracing for API, database, provider, Redis, and Celery activity
+- Local Prometheus, Grafana, Loki, Tempo, and OpenTelemetry Collector observability stack
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.
@@ -175,6 +176,21 @@ make app-logs
 ```
 
 Database backups are written to `./backups` by default. Create or verify one manually with `make backup` and `make backup-verify BACKUP=backups/file.dump`; the Compose `backup` process runs the same operation automatically on the configured interval. Store production backups in external durable storage rather than only on the application host.
+
+Start the complete local application and observability stack with:
+
+```bash
+make app-up
+```
+
+The observability tools are available at:
+
+- Grafana: <http://localhost:3000> (`admin` / `admin`)
+- Prometheus: <http://localhost:9090>
+- Loki: <http://localhost:3100/ready>
+- Tempo: <http://localhost:3200/ready>
+
+Grafana automatically provisions Prometheus, Loki, and Tempo, including the `Job Radar Overview` dashboard. The API containers send OpenTelemetry traces to the local collector, which forwards them to Tempo. Container logs are collected by Alloy and sent to Loki.
 
 The API creates an ingestion run and dispatches a Celery task. Redis brokers the task to the worker, which updates the run. The scheduler dispatches the same task for due sources. Flower provides task and worker monitoring at `http://localhost:5555`.
 

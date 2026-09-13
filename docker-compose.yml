@@ -30,6 +30,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@postgres:5432/jobradar
       REDIS_URL: redis://redis:6379/0
       AUTH_REQUIRE_TOKEN: "true"
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: job-radar-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     ports:
       - "8000:8000"
     depends_on:
@@ -43,6 +46,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@postgres:5432/jobradar
       REDIS_URL: redis://redis:6379/0
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: job-radar-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,6 +61,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@postgres:5432/jobradar
       REDIS_URL: redis://redis:6379/0
       SCHEDULER_POLL_SECONDS: "30"
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: job-radar-scheduler
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,6 +75,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@postgres:5432/jobradar
       REDIS_URL: redis://redis:6379/0
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: job-radar-flower
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     ports:
       - "5555:5555"
     depends_on:
@@ -88,5 +100,70 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - api
+  loki:
+    image: grafana/loki:3.5.0
+    command: -config.file=/etc/loki/config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+  tempo:
+    image: grafana/tempo:2.7.2
+    command: -config.file=/etc/tempo/config.yml
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./observability/tempo/config.yml:/etc/tempo/config.yml:ro
+      - tempo_data:/var/tempo
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.138.0
+    command: ["--config=/etc/otelcol/config.yml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./observability/otel-collector/config.yml:/etc/otelcol/config.yml:ro
+    depends_on:
+      - tempo
+  alloy:
+    image: grafana/alloy:v1.10.2
+    command: run /etc/alloy/config.alloy
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on:
+      - loki
+  grafana:
+    image: grafana/grafana:12.1.1
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
 volumes:
   postgres_data:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  grafana_data:
+  alloy_data:

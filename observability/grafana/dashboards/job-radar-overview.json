@@ -1,0 +1,19 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {"id": 1, "type": "timeseries", "title": "HTTP requests per second", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "sum(rate(jobradar_http_requests_total[5m]))", "legendFormat": "requests/sec", "refId": "A"}]},
+    {"id": 2, "type": "timeseries", "title": "HTTP 5xx errors", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "sum(rate(jobradar_http_errors_total[5m]))", "legendFormat": "errors/sec", "refId": "A"}]},
+    {"id": 3, "type": "timeseries", "title": "API scrape health", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "up{job=\"job-radar-api\"}", "legendFormat": "api", "refId": "A"}]},
+    {"id": 4, "type": "logs", "title": "Application logs", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}, "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"expr": "{job=\"job-radar\"}", "refId": "A"}]}
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["job-radar", "observability"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "title": "Job Radar Overview",
+  "uid": "job-radar-overview",
+  "version": 1
+}

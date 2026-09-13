@@ -4,7 +4,7 @@ UV ?= uv
 PYTEST := $(UV) run pytest
 COMPOSE := docker compose
 
-.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs
+.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down
 .PHONY: migrate migration run run-api run-worker run-scheduler run-flower backup backup-verify restore run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
@@ -18,6 +18,8 @@ help:
 	  'app-up             Start API, worker, and scheduler containers' \
 	  'app-down           Stop API, worker, and scheduler containers' \
 	  'app-logs           Follow API/worker/scheduler logs' \
+	  'observability-up   Start Prometheus, Grafana, Loki, Tempo, Alloy, and OTel Collector' \
+	  'observability-down Stop the local observability stack' \
 	  'migrate            Apply Alembic migrations' \
 	  'migration          Create a new Alembic migration (MSG="...")' \
 	  'run                Run the FastAPI development server' \
@@ -59,10 +61,16 @@ services-logs:
 	$(COMPOSE) logs -f postgres redis
 
 app-up:
-	$(COMPOSE) up -d --build api worker scheduler flower backup
+	$(COMPOSE) up -d --build api worker scheduler flower backup prometheus loki tempo otel-collector alloy grafana
 
 app-down:
-	$(COMPOSE) stop api worker scheduler flower backup
+	$(COMPOSE) stop api worker scheduler flower backup prometheus loki tempo otel-collector alloy grafana
+
+observability-up:
+	$(COMPOSE) up -d prometheus loki tempo otel-collector alloy grafana
+
+observability-down:
+	$(COMPOSE) stop prometheus loki tempo otel-collector alloy grafana
 
 app-logs:
 	$(COMPOSE) logs -f api worker scheduler flower

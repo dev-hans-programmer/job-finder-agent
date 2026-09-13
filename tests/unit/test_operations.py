@@ -3,12 +3,13 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
 
 from app.api.v1.metrics import metrics
 from app.api.v1.users import delete_me
 from app.dependencies.deletion import get_deletion_service
 from app.domain.preferences.deletion_service import DeletionService
-from app.observability.logging import redact
+from app.observability.logging import redact, request_id_middleware
 from app.observability.metrics import increment, snapshot
 from app.repositories.sources import SourceRepository
 
@@ -49,6 +50,28 @@ async def test_metrics_redaction_and_deletion():
     assert await delete_me(user.id, Session(user), DeletionService()) is None
     with pytest.raises(HTTPException):
         await delete_me(uuid.uuid4(), Session(), DeletionService())
+
+
+@pytest.mark.asyncio
+async def test_request_logging_records_unhandled_error() -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/failure",
+            "headers": [],
+            "query_string": b"",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("testclient", 1),
+        }
+    )
+
+    async def fail(_request):
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await request_id_middleware(request, fail)
 
 
 @pytest.mark.asyncio

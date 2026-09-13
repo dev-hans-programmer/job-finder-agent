@@ -7,7 +7,8 @@ def test_validate_preferences(client) -> None:
         json={"titles": ["Backend Engineer"], "work_mode": ["remote"]},
     )
     assert response.status_code == 200
-    assert response.json()["titles"] == ["Backend Engineer"]
+    assert response.json()["success"] is True
+    assert response.json()["data"]["titles"] == ["Backend Engineer"]
 
 
 def test_validate_preferences_rejects_invalid_payload(client) -> None:
@@ -29,12 +30,12 @@ def test_create_and_get_active_preferences(client) -> None:
     payload = {"titles": ["Backend Engineer"], "matching": {"minimum_score": 80}}
     created = client.put("/api/v1/preferences", headers={"X-User-ID": user_id}, json=payload)
     assert created.status_code == 201
-    assert created.json()["version"] == 1
-    assert created.json()["weights"]["skills"] == 40
+    assert created.json()["data"]["version"] == 1
+    assert created.json()["data"]["weights"]["skills"] == 40
 
     fetched = client.get("/api/v1/preferences", headers={"X-User-ID": user_id})
     assert fetched.status_code == 200
-    assert fetched.json()["titles"] == ["Backend Engineer"]
+    assert fetched.json()["data"]["titles"] == ["Backend Engineer"]
 
 
 def test_get_preferences_returns_not_found(client) -> None:

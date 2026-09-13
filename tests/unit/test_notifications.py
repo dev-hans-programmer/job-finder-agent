@@ -177,8 +177,8 @@ async def test_notification_api_status():
         )
     )
     service = NotificationService(repo)
-    response = await get_delivery(uuid.uuid4(), None, service)
-    assert response["status"] == "delivered"
+    response = await get_delivery(uuid.uuid4(), None, None, service)
+    assert response.data["status"] == "delivered"
     repo.row = None
     with pytest.raises(Exception):
-        await get_delivery(uuid.uuid4(), None, service)
+        await get_delivery(uuid.uuid4(), None, None, service)

@@ -88,13 +88,26 @@ async def test_query_service_and_routes_cover_success_paths():
         None, user_id, job.id, FeedbackInput(label="saved", note="good")
     )
     assert feedback.label == "saved"
-    assert (await list_jobs(user_id, None, service, 1, 10, None, None, None, None))["total"] == 1
-    assert (await get_job(job.id, user_id, None, service))["job"]["id"] == str(job.id)
-    assert (await get_match(job.id, user_id, None, service))["decision"] == "notify"
+    assert (
+        await list_jobs(
+            None,
+            user_id,
+            None,
+            service,
+            1,
+            10,
+            None,
+            None,
+            None,
+            None,
+        )
+    ).data[0]["id"] == str(job.id)
+    assert (await get_job(job.id, None, user_id, None, service)).data["job"]["id"] == str(job.id)
+    assert (await get_match(job.id, None, user_id, None, service)).data["decision"] == "notify"
     saved = await save_feedback(
-        job.id, FeedbackInput(label="saved"), user_id, FakeSession(), service
+        job.id, FeedbackInput(label="saved"), None, user_id, FakeSession(), service
     )
-    assert saved["label"] == "saved"
+    assert saved.data["label"] == "saved"
     assert _match_payload(None) is None
 
 
@@ -114,8 +127,10 @@ async def test_query_routes_raise_not_found():
 
     service = JobQueryService(FakeJobs(), FakeMatches())
     with pytest.raises(HTTPException):
-        await get_job(uuid.uuid4(), uuid.uuid4(), None, service)
+        await get_job(uuid.uuid4(), None, uuid.uuid4(), None, service)
     with pytest.raises(HTTPException):
-        await get_match(uuid.uuid4(), uuid.uuid4(), None, service)
+        await get_match(uuid.uuid4(), None, uuid.uuid4(), None, service)
     with pytest.raises(HTTPException):
-        await save_feedback(uuid.uuid4(), FeedbackInput(label="saved"), uuid.uuid4(), None, service)
+        await save_feedback(
+            uuid.uuid4(), FeedbackInput(label="saved"), None, uuid.uuid4(), None, service
+        )

@@ -2,9 +2,10 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.responses import SuccessResponse, success_response
 from app.dependencies.auth import user_id_from_current_user
 from app.dependencies.database import get_session
 from app.dependencies.job_query import get_job_query_service
@@ -48,6 +49,7 @@ def _match_payload(result) -> dict | None:
 
 @router.get("")
 async def list_jobs(
+    request: Request,
     user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
@@ -57,7 +59,7 @@ async def list_jobs(
     status_filter: str | None = Query(None, alias="status"),
     company: str | None = None,
     location: str | None = None,
-) -> dict:
+) -> SuccessResponse[list[dict]]:
     jobs, total = await service.list(
         session,
         user_id,
@@ -68,84 +70,98 @@ async def list_jobs(
         company=company,
         location=location,
     )
-    return {
-        "items": [_job_payload(job) for job in jobs],
-        "page": page,
-        "page_size": page_size,
-        "total": total,
-    }
+    return success_response(
+        [_job_payload(job) for job in jobs],
+        request,
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
 
 
 @router.get("/{job_id}")
 async def get_job(
     job_id: uuid.UUID,
+    request: Request,
     user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
-) -> dict:
+) -> SuccessResponse[dict]:
     detail = await service.detail(session, user_id, job_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="job not found")
     feedback = detail["feedback"]
-    return {
-        "job": _job_payload(detail["job"]),
-        "match": _match_payload(detail["match"]),
-        "feedback": None
-        if feedback is None
-        else {"id": str(feedback.id), "label": feedback.label, "note": feedback.note},
-    }
+    return success_response(
+        {
+            "job": _job_payload(detail["job"]),
+            "match": _match_payload(detail["match"]),
+            "feedback": None
+            if feedback is None
+            else {"id": str(feedback.id), "label": feedback.label, "note": feedback.note},
+        },
+        request,
+    )
 
 
 @router.get("/{job_id}/match")
 async def get_match(
     job_id: uuid.UUID,
+    request: Request,
     user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
-) -> dict:
+) -> SuccessResponse[dict]:
     detail = await service.detail(session, user_id, job_id)
     if detail is None or detail["match"] is None:
         raise HTTPException(status_code=404, detail="match not found")
-    return _match_payload(detail["match"])
+    return success_response(_match_payload(detail["match"]), request)
 
 
 @router.post("/{job_id}/feedback", status_code=status.HTTP_200_OK)
 async def save_feedback(
     job_id: uuid.UUID,
     data: FeedbackInput,
+    request: Request,
     user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
-) -> dict:
+) -> SuccessResponse[dict]:
     feedback = await service.feedback(session, user_id, job_id, data)
     if feedback is None:
         raise HTTPException(status_code=404, detail="job not found")
-    return {
-        "id": str(feedback.id),
-        "job_id": str(feedback.job_id),
-        "label": feedback.label,
-        "note": feedback.note,
-    }
+    return success_response(
+        {
+            "id": str(feedback.id),
+            "job_id": str(feedback.job_id),
+            "label": feedback.label,
+            "note": feedback.note,
+        },
+        request,
+    )
 
 
 @router.post("/{job_id}/match")
 async def match_job(
     job_id: uuid.UUID,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     service: MatchingService = Depends(get_matching_service),
     user_id: uuid.UUID = Depends(user_id_from_current_user),
-) -> dict:
+) -> SuccessResponse[dict]:
     result = await service.match_job(session, job_id, user_id)
     if result is None:
         raise HTTPException(status_code=404, detail="job or active preferences not found")
-    return {
-        "id": str(result.id),
-        "score": result.score,
-        "confidence": result.confidence,
-        "decision": result.decision,
-        "components": result.component_scores,
-        "matched": result.matched_criteria,
-        "missing": result.missing_criteria,
-        "concerns": result.concerns,
-        "reasoning": result.reasoning,
-    }
+    return success_response(
+        {
+            "id": str(result.id),
+            "score": result.score,
+            "confidence": result.confidence,
+            "decision": result.decision,
+            "components": result.component_scores,
+            "matched": result.matched_criteria,
+            "missing": result.missing_criteria,
+            "concerns": result.concerns,
+            "reasoning": result.reasoning,
+        },
+        request,
+    )

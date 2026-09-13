@@ -16,25 +16,26 @@ def test_register_login_me_refresh_and_logout(client):
     password = "correct horse battery staple"
     registered = client.post("/api/v1/auth/register", json={"email": email, "password": password})
     assert registered.status_code == 201
-    assert registered.json()["roles"] == ["user"]
+    assert registered.json()["success"] is True
+    assert registered.json()["data"]["roles"] == ["user"]
 
     duplicate = client.post("/api/v1/auth/register", json={"email": email, "password": password})
     assert duplicate.status_code == 409
     login = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert login.status_code == 200
-    tokens = login.json()
+    tokens = login.json()["data"]
     me = client.get(
         "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
     )
-    assert me.status_code == 200 and me.json()["email"] == email
+    assert me.status_code == 200 and me.json()["data"]["email"] == email
     refreshed = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert refreshed.status_code == 200
-    assert refreshed.json()["refresh_token"] != tokens["refresh_token"]
+    assert refreshed.json()["data"]["refresh_token"] != tokens["refresh_token"]
     reused = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert reused.status_code == 401
     assert (
         client.post(
-            "/api/v1/auth/logout", json={"refresh_token": refreshed.json()["refresh_token"]}
+            "/api/v1/auth/logout", json={"refresh_token": refreshed.json()["data"]["refresh_token"]}
         ).status_code
         == 204
     )
@@ -67,9 +68,8 @@ async def test_auth_role_routes_and_dependency_branches():
             refresh_token=AsyncMock(return_value=None),
         ),
     )
-    assert (await create_role(RoleInput(name="operator"), None, None, service))[
-        "name"
-    ] == "operator"
+    response = await create_role(RoleInput(name="operator"), None, None, None, service)
+    assert response.data["name"] == "operator"
     await logout(RefreshInput(refresh_token="x" * 20), None, service)
 
     assert await assign_role(uuid.uuid4(), "user", None, None, service) is None

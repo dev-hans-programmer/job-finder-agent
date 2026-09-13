@@ -10,13 +10,13 @@ def test_create_source(client):
         json={"kind": "greenhouse", "name": "Demo", "config": {"board": "demo"}},
     )
     assert response.status_code == 201
-    assert response.json()["kind"] == "greenhouse"
-    run = client.post(f"/api/v1/sources/{response.json()['id']}/run")
+    assert response.json()["data"]["kind"] == "greenhouse"
+    run = client.post(f"/api/v1/sources/{response.json()['data']['id']}/run")
     assert run.status_code == 202
-    assert run.json()["status"] == "running"
-    status = client.get(f"/api/v1/runs/{run.json()['run_id']}")
+    assert run.json()["data"]["status"] == "running"
+    status = client.get(f"/api/v1/runs/{run.json()['data']['run_id']}")
     assert status.status_code == 200
-    assert status.json()["source_id"] == response.json()["id"]
+    assert status.json()["data"]["source_id"] == response.json()["data"]["id"]
 
 
 def test_run_missing_source(client):
@@ -27,7 +27,8 @@ def test_run_missing_source(client):
 def test_list_sources(client):
     response = client.get("/api/v1/sources")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    assert response.json()["success"] is True
+    assert isinstance(response.json()["data"], list)
 
 
 def test_run_unsupported_source_returns_validation_error(client):

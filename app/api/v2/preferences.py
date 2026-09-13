@@ -1,8 +1,9 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.responses import SuccessResponse, success_response
 from app.dependencies.auth import user_id_from_current_user
 from app.dependencies.database import get_session
 from app.dependencies.preferences_v2 import get_v2_preference_service
@@ -12,8 +13,9 @@ from app.domain.preferences.v2_service import V2PreferenceService
 router = APIRouter(prefix="/api/v2/preferences", tags=["preferences-v2"])
 
 
-@router.get("", response_model=V2PreferenceResponse)
+@router.get("", response_model=SuccessResponse[V2PreferenceResponse])
 async def get_preferences_v2(
+    request: Request,
     user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: V2PreferenceService = Depends(get_v2_preference_service),
@@ -21,14 +23,17 @@ async def get_preferences_v2(
     response = await service.get_active(session, user_id)
     if response is None:
         raise HTTPException(status_code=404, detail="No active preference profile")
-    return response
+    return success_response(response, request, api_version="v2")
 
 
-@router.put("", response_model=V2PreferenceResponse, status_code=status.HTTP_201_CREATED)
+@router.put(
+    "", response_model=SuccessResponse[V2PreferenceResponse], status_code=status.HTTP_201_CREATED
+)
 async def update_preferences_v2(
     data: V2PreferenceUpdate,
+    request: Request,
     user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: V2PreferenceService = Depends(get_v2_preference_service),
 ):
-    return await service.update(session, user_id, data)
+    return success_response(await service.update(session, user_id, data), request, api_version="v2")

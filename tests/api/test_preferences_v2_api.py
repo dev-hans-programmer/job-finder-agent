@@ -5,12 +5,13 @@ def test_v2_preferences_are_enveloped_and_versioned(client):
     )
     assert response.status_code == 201
     payload = response.json()
-    assert payload["api_version"] == "v2"
-    assert payload["status"] == "active"
-    assert payload["preferences"]["titles"] == ["Staff Backend Engineer"]
+    assert payload["success"] is True
+    assert payload["meta"]["api_version"] == "v2"
+    assert payload["data"]["status"] == "active"
+    assert payload["data"]["preferences"]["titles"] == ["Staff Backend Engineer"]
     fetched = client.get("/api/v2/preferences")
     assert fetched.status_code == 200
-    assert fetched.json()["profile_id"] == payload["profile_id"]
+    assert fetched.json()["data"]["profile_id"] == payload["data"]["profile_id"]
 
 
 def test_v2_preferences_missing_profile_returns_not_found(client):
@@ -25,7 +26,7 @@ def test_v2_preferences_missing_profile_returns_not_found(client):
     import asyncio
 
     try:
-        asyncio.run(get_preferences_v2(None, None, EmptyService()))
+        asyncio.run(get_preferences_v2(None, None, None, EmptyService()))
     except HTTPException as error:
         assert error.status_code == 404
     else:

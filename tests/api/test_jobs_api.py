@@ -32,6 +32,6 @@ def test_match_missing_job_returns_not_found(client):
 @pytest.mark.asyncio
 async def test_match_job_returns_explainable_result():
     job_id = uuid.uuid4()
-    response = await match_job(job_id, None, _Service(), uuid.uuid4())
-    assert response["id"] == str(job_id)
-    assert response["decision"] == "notify"
+    response = await match_job(job_id, None, None, _Service(), uuid.uuid4())
+    assert response.data["id"] == str(job_id)
+    assert response.data["decision"] == "notify"

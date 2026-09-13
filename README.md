@@ -24,6 +24,7 @@ Implemented capabilities include:
 - Automated PostgreSQL backups with retention, verification, and restore tooling
 - Optional OpenTelemetry tracing for API, database, provider, Redis, and Celery activity
 - Local Prometheus, Grafana, Loki, Tempo, and OpenTelemetry Collector observability stack
+- Consistent JSON success envelopes with request correlation and pagination metadata
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.

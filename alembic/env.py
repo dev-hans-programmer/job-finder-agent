@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.domain.jobs import feedback as _feedback_models  # noqa: F401
 from app.domain.jobs import models as _job_models  # noqa: F401
 from app.domain.matching import models as _matching_models  # noqa: F401
+from app.domain.notifications import models as _notification_models  # noqa: F401
 from app.domain.preferences.models import Base
 from app.ingestion import models as _ingestion_models  # noqa: F401
 

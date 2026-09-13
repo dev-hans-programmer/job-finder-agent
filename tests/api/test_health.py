@@ -8,6 +8,12 @@ def test_live_health(client) -> None:
     assert response.headers["X-Request-ID"]
 
 
+def test_v2_live_health(client) -> None:
+    response = client.get("/api/v2/health/live")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "api_version": "v2"}
+
+
 def test_request_id_is_preserved(client) -> None:
     response = client.get("/health/live", headers={"X-Request-ID": "test-request"})
     assert response.headers["X-Request-ID"] == "test-request"

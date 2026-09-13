@@ -156,6 +156,80 @@ The API is available at:
 - Readiness: <http://localhost:8000/health/ready>
 - Metrics: <http://localhost:8000/metrics>
 
+### API versioning example
+
+The existing liveness endpoint is available at:
+
+```bash
+curl http://localhost:8000/health/live
+```
+
+Version 2 is implemented as a separate router and does not change the v1/legacy response:
+
+```bash
+curl http://localhost:8000/api/v2/health/live
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "api_version": "v2"
+}
+```
+
+To add v3, create `app/api/v3/`, add a router with `prefix="/api/v3"`, implement the changed contract there, and include that router in `app/main.py`. Keep v1 and v2 routes intact so existing clients remain compatible. Dependencies, services, and repositories can be shared when their behavior has not changed; create a new service or schema when the business contract changes.
+
+#### Full v2 example: preferences
+
+V1 returns the preference fields directly:
+
+```bash
+curl http://localhost:8000/api/v1/preferences
+```
+
+V2 changes the contract to an explicit envelope and adds profile metadata:
+
+```bash
+curl -X PUT http://localhost:8000/api/v2/preferences \
+  -H 'Content-Type: application/json' \
+  -d '{"preferences":{"titles":["Staff Backend Engineer"]}}'
+```
+
+The request travels through:
+
+```text
+/api/v2/preferences
+  -> app/api/v2/preferences.py
+  -> app/dependencies/preferences_v2.py
+  -> app/domain/preferences/v2_service.py
+  -> app/repositories/preferences.py
+  -> preference_profiles table
+```
+
+V2 has its own request/response schemas and service because its HTTP contract changed. It reuses the v1 repository because the database access pattern did not change. If v2 required a new query or table, add that method or a dedicated repository under `app/repositories/`; do not put SQL in the route.
+
+Read the v2 response:
+
+```bash
+curl http://localhost:8000/api/v2/preferences
+```
+
+```json
+{
+  "api_version": "v2",
+  "profile_id": "...",
+  "version": 1,
+  "status": "active",
+  "preferences": {
+    "titles": ["Staff Backend Engineer"]
+  },
+  "matching_weights": {},
+  "created_at": "..."
+}
+```
+
 ## End-to-end example
 
 ### 1. Save preferences

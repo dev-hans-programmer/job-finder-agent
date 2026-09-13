@@ -55,7 +55,7 @@ migration:
 	$(UV) run alembic revision -m "$(MSG)"
 
 run:
-	$(UV) run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+	$(UV) run uvicorn app.main:app --reload --host 127.0.0.1 --port 8005
 
 test:
 	$(PYTEST) tests/unit tests/integration tests/api -q

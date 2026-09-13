@@ -235,6 +235,10 @@ async def test_auth_sessions_repository_and_service_paths():
         )
         == 0
     )
+    verification = SimpleNamespace()
+    await repository.save_verification_code(Session(), verification)
+    assert await repository.verification_code(session, user_id, "email", "hash") is auth_session
+    await repository.revoke_user_tokens(other_query, user_id, datetime.now(timezone.utc))
 
     settings = SimpleNamespace(
         auth_session_management_enabled=True,
@@ -266,3 +270,76 @@ async def test_auth_sessions_repository_and_service_paths():
         await disabled.revoke_session(Session(), user_id, current_id)
     with pytest.raises(ValueError):
         await disabled.revoke_other_sessions(Session(), user_id, current_id)
+
+
+@pytest.mark.asyncio
+async def test_account_security_service_paths():
+    user = SimpleNamespace(
+        id=uuid.uuid4(),
+        email="security@example.com",
+        password_hash=hash_password("correct password"),
+        status="active",
+        failed_login_attempts=0,
+        locked_until=None,
+        email_verified_at=None,
+    )
+    settings = SimpleNamespace(
+        default_user_role="user",
+        auth_password_reset_enabled=True,
+        auth_email_verification_enabled=True,
+        auth_account_lockout_enabled=True,
+        auth_max_login_attempts=2,
+        auth_lockout_minutes=15,
+        auth_otp_expire_minutes=10,
+        refresh_token_expire_days=30,
+        jwt_secret_key="secret",
+        access_token_expire_minutes=15,
+        jwt_issuer="issuer",
+    )
+    repository = Repo(user=user)
+    repository.save_verification_code = AsyncMock()
+    repository.verification_code = AsyncMock()
+    repository.revoke_user_tokens = AsyncMock()
+    service = AuthService(repository, settings)
+    pending_user = await AuthService(Repo(user=None), settings).register(
+        Session(), "pending@example.com", "correct password"
+    )
+    assert pending_user.status == "pending_verification"
+    assert len(await service.issue_code(Session(), user.email, "password_reset")) == 6
+    assert (
+        await AuthService(Repo(user=None), settings).issue_code(
+            Session(), "missing@example.com", "password_reset"
+        )
+        is None
+    )
+
+    record = SimpleNamespace(
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=1), consumed_at=None
+    )
+    repository.verification_code.return_value = record
+    await service.verify_email(Session(), user.email, "123456")
+    assert user.email_verified_at is not None
+    assert user.status == "active"
+    await service.reset_password(Session(), user.email, "123456", "new password 123")
+    assert repository.revoke_user_tokens.await_count == 1
+    record.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    with pytest.raises(ValueError):
+        await service.verify_email(Session(), user.email, "123456")
+    with pytest.raises(ValueError):
+        await service.reset_password(Session(), user.email, "123456", "new password 123")
+
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    for _ in range(2):
+        with pytest.raises(ValueError):
+            await service.authenticate(Session(), user.email, "wrong password")
+    with pytest.raises(ValueError, match="locked"):
+        await service.authenticate(Session(), user.email, "new password 123")
+    user.locked_until = None
+    user.failed_login_attempts = 1
+    assert await service.authenticate(Session(), user.email, "new password 123") is user
+
+    settings.auth_email_verification_enabled = True
+    user.email_verified_at = None
+    with pytest.raises(ValueError, match="verification"):
+        await service.authenticate(Session(), user.email, "new password 123")

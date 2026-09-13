@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.responses import SuccessResponse, success_response
 from app.auth.schemas import (
+    EmailVerificationInput,
     LoginInput,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     RefreshInput,
     RegisterInput,
     RoleInput,
@@ -50,6 +53,8 @@ async def register(
         user = await service.register(session, data.email, data.password)
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    if getattr(service.settings, "auth_email_verification_enabled", False):
+        await service.issue_code(session, data.email, "email_verification")
     return success_response(await user_response(session, user, service), request)
 
 
@@ -89,6 +94,62 @@ async def refresh(
         raise HTTPException(status_code=401, detail=str(error)) from error
     return success_response(
         TokenResponse(access_token=access, refresh_token=refresh_token), request
+    )
+
+
+@router.post("/auth/password-reset/request", response_model=SuccessResponse[dict], status_code=202)
+async def request_password_reset(
+    data: PasswordResetRequest,
+    request: Request,
+    session=Depends(get_session),
+    service: AuthService = Depends(get_auth_service),
+):
+    if getattr(service.settings, "auth_password_reset_enabled", False):
+        await service.issue_code(session, data.email, "password_reset")
+    return success_response(
+        {"message": "If the account exists, a reset code has been sent"}, request
+    )
+
+
+@router.post("/auth/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def confirm_password_reset(
+    data: PasswordResetConfirm,
+    session=Depends(get_session),
+    service: AuthService = Depends(get_auth_service),
+):
+    if not getattr(service.settings, "auth_password_reset_enabled", False):
+        raise HTTPException(status_code=404, detail="password reset is disabled")
+    try:
+        await service.reset_password(session, data.email, data.code, data.password)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/auth/email/verify", status_code=status.HTTP_204_NO_CONTENT)
+async def verify_email(
+    data: EmailVerificationInput,
+    session=Depends(get_session),
+    service: AuthService = Depends(get_auth_service),
+):
+    if not getattr(service.settings, "auth_email_verification_enabled", False):
+        raise HTTPException(status_code=404, detail="email verification is disabled")
+    try:
+        await service.verify_email(session, data.email, data.code)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/auth/email/resend", response_model=SuccessResponse[dict], status_code=202)
+async def resend_email_verification(
+    data: PasswordResetRequest,
+    request: Request,
+    session=Depends(get_session),
+    service: AuthService = Depends(get_auth_service),
+):
+    if getattr(service.settings, "auth_email_verification_enabled", False):
+        await service.issue_code(session, data.email, "email_verification")
+    return success_response(
+        {"message": "If the account exists, a verification code has been sent"}, request
     )
 
 

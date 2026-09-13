@@ -14,6 +14,21 @@ class RefreshInput(BaseModel):
     refresh_token: str = Field(min_length=20)
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9]+$")
+    password: str = Field(min_length=12)
+
+
+class EmailVerificationInput(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^[0-9]+$")
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str

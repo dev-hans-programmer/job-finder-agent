@@ -22,7 +22,14 @@ from app.main import create_app
 def settings() -> Settings:
     # API tests are intentionally local-mode; strict-auth behavior is covered
     # explicitly in the authentication tests and manual QA flow.
-    return Settings(auth_require_token=False, otel_enabled=False, rate_limit_enabled=False)
+    return Settings(
+        auth_require_token=False,
+        otel_enabled=False,
+        rate_limit_enabled=False,
+        auth_password_reset_enabled=False,
+        auth_email_verification_enabled=False,
+        auth_account_lockout_enabled=False,
+    )
 
 
 @pytest.fixture

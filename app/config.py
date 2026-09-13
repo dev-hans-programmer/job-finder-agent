@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     rate_limit_fail_open: bool = True
     trusted_proxy_ips: str = ""
     auth_session_management_enabled: bool = False
+    auth_password_reset_enabled: bool = False
+    auth_email_verification_enabled: bool = False
+    auth_account_lockout_enabled: bool = False
+    auth_max_login_attempts: int = Field(5, ge=1)
+    auth_lockout_minutes: int = Field(15, ge=1)
+    auth_otp_expire_minutes: int = Field(10, ge=1)
+    auth_otp_resend_seconds: int = Field(60, ge=1)
 
 
 @lru_cache

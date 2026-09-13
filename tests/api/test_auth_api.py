@@ -7,13 +7,25 @@ import pytest
 
 from app.api.v1.auth import (
     assign_role,
+    confirm_password_reset,
     create_role,
     logout,
+    register,
+    request_password_reset,
+    resend_email_verification,
     revoke_other_sessions,
     revoke_session,
     sessions,
+    verify_email,
 )
-from app.auth.schemas import RefreshInput, RoleInput
+from app.auth.schemas import (
+    EmailVerificationInput,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    RefreshInput,
+    RegisterInput,
+    RoleInput,
+)
 from app.auth.security import create_access_token
 from app.dependencies.auth import get_current_user, require_role
 
@@ -209,6 +221,81 @@ async def test_session_route_error_branches():
     service.revoke_session = AsyncMock(side_effect=ValueError("not found"))
     with pytest.raises(Exception):
         await revoke_session(uuid.uuid4(), user, None, service)
+
+
+@pytest.mark.asyncio
+async def test_account_security_routes_feature_flags():
+    request = SimpleNamespace(state=SimpleNamespace())
+    settings = SimpleNamespace(
+        auth_password_reset_enabled=True, auth_email_verification_enabled=True
+    )
+    service = SimpleNamespace(settings=settings, issue_code=AsyncMock())
+    service.register = AsyncMock(
+        return_value=SimpleNamespace(id=uuid.uuid4(), email="security@example.com")
+    )
+    service.roles_for_user = AsyncMock(return_value=["user"])
+    registered = await register(
+        RegisterInput(email="security@example.com", password="NewPassword123!"),
+        request,
+        None,
+        service,
+    )
+    assert registered.data.email == "security@example.com"
+    response = await request_password_reset(
+        PasswordResetRequest(email="security@example.com"), request, None, service
+    )
+    assert response.data["message"].startswith("If the account exists")
+    await resend_email_verification(
+        PasswordResetRequest(email="security@example.com"), request, None, service
+    )
+    service.verify_email = AsyncMock()
+    await verify_email(
+        EmailVerificationInput(email="security@example.com", code="123456"), None, service
+    )
+    service.reset_password = AsyncMock()
+    await confirm_password_reset(
+        PasswordResetConfirm(
+            email="security@example.com", code="123456", password="NewPassword123!"
+        ),
+        None,
+        service,
+    )
+    settings.auth_password_reset_enabled = False
+    settings.auth_email_verification_enabled = False
+    await request_password_reset(
+        PasswordResetRequest(email="security@example.com"), request, None, service
+    )
+    await resend_email_verification(
+        PasswordResetRequest(email="security@example.com"), request, None, service
+    )
+    with pytest.raises(Exception):
+        await confirm_password_reset(
+            PasswordResetConfirm(
+                email="security@example.com", code="123456", password="NewPassword123!"
+            ),
+            None,
+            service,
+        )
+    with pytest.raises(Exception):
+        await verify_email(
+            EmailVerificationInput(email="security@example.com", code="123456"), None, service
+        )
+    settings.auth_password_reset_enabled = True
+    service.reset_password.side_effect = ValueError("expired")
+    with pytest.raises(Exception):
+        await confirm_password_reset(
+            PasswordResetConfirm(
+                email="security@example.com", code="123456", password="NewPassword123!"
+            ),
+            None,
+            service,
+        )
+    settings.auth_email_verification_enabled = True
+    service.verify_email.side_effect = ValueError("expired")
+    with pytest.raises(Exception):
+        await verify_email(
+            EmailVerificationInput(email="security@example.com", code="123456"), None, service
+        )
 
 
 def test_session_management_flag_tracks_and_revokes_sessions(client):

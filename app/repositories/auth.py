@@ -3,7 +3,14 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 
-from app.domain.preferences.models import AuthSession, RefreshToken, Role, User, UserRole
+from app.domain.preferences.models import (
+    AuthSession,
+    RefreshToken,
+    Role,
+    User,
+    UserRole,
+    VerificationCode,
+)
 
 
 class AuthRepository:
@@ -106,3 +113,30 @@ class AuthRepository:
             )
             await session.commit()
         return count
+
+    async def verification_code(self, session, user_id, purpose: str, code_hash: str):
+        return await session.scalar(
+            select(VerificationCode).where(
+                VerificationCode.user_id == user_id,
+                VerificationCode.purpose == purpose,
+                VerificationCode.code_hash == code_hash,
+                VerificationCode.consumed_at.is_(None),
+            )
+        )
+
+    async def save_verification_code(self, session, code: VerificationCode):
+        session.add(code)
+        await session.commit()
+
+    async def revoke_user_tokens(self, session, user_id: uuid.UUID, now):
+        await session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+        await session.execute(
+            update(AuthSession)
+            .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+        await session.commit()

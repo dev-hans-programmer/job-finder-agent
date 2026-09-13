@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -11,7 +12,7 @@ from app.auth.security import (
     hash_refresh_token,
     verify_password,
 )
-from app.domain.preferences.models import AuthSession, RefreshToken, User
+from app.domain.preferences.models import AuthSession, RefreshToken, User, VerificationCode
 from app.repositories.auth import AuthRepository
 
 
@@ -19,11 +20,20 @@ class AuthService:
     def __init__(self, repository: AuthRepository, settings):
         self.repository, self.settings = repository, settings
 
+    @property
+    def lockout_enabled(self):
+        return getattr(self.settings, "auth_account_lockout_enabled", False)
+
     async def register(self, session, email: str, password: str):
         email = email.lower()
         if await self.repository.user_by_email(session, email):
             raise ValueError("email is already registered")
-        user = User(email=email, password_hash=hash_password(password))
+        verification_enabled = getattr(self.settings, "auth_email_verification_enabled", False)
+        user = User(
+            email=email,
+            password_hash=hash_password(password),
+            status="pending_verification" if verification_enabled else "active",
+        )
         session.add(user)
         await session.flush()
         role = await self.repository.role(session, self.settings.default_user_role)
@@ -44,13 +54,36 @@ class AuthService:
 
     async def authenticate(self, session, email: str, password: str):
         user = await self.repository.user_by_email(session, email.lower())
+        now = datetime.now(timezone.utc)
+        if (
+            user is not None
+            and self.lockout_enabled
+            and user.locked_until
+            and user.locked_until > now
+        ):
+            raise ValueError("account is temporarily locked")
+        verification_enabled = getattr(self.settings, "auth_email_verification_enabled", False)
         if (
             user is None
             or user.password_hash is None
             or not verify_password(password, user.password_hash)
-            or user.status != "active"
+            or (
+                user.status != "active"
+                and not (verification_enabled and user.status == "pending_verification")
+            )
         ):
+            if user is not None and self.lockout_enabled:
+                user.failed_login_attempts += 1
+                if user.failed_login_attempts >= self.settings.auth_max_login_attempts:
+                    user.locked_until = now + timedelta(minutes=self.settings.auth_lockout_minutes)
+                await session.commit()
             raise ValueError("invalid credentials")
+        if verification_enabled and not user.email_verified_at:
+            raise ValueError("email verification required")
+        if self.lockout_enabled:
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            await session.commit()
         return user
 
     async def issue_tokens(self, session, user, session_id=None, session_metadata=None):
@@ -120,6 +153,55 @@ class AuthService:
         return await self.repository.revoke_other_auth_sessions(
             session, user_id, current_session_id, datetime.now(timezone.utc)
         )
+
+    async def issue_code(self, session, email: str, purpose: str):
+        user = await self.repository.user_by_email(session, email.lower())
+        if user is None:
+            return None
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        record = VerificationCode(
+            user_id=user.id,
+            purpose=purpose,
+            code_hash=hash_refresh_token(code),
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(minutes=self.settings.auth_otp_expire_minutes),
+        )
+        await self.repository.save_verification_code(session, record)
+        logging.getLogger("job-radar.auth").info(
+            "auth_code_issued purpose=%s email=%s code=%s", purpose, email.lower(), code
+        )
+        return code
+
+    async def verify_email(self, session, email: str, code: str):
+        user = await self.repository.user_by_email(session, email.lower())
+        record = (
+            None
+            if user is None
+            else await self.repository.verification_code(
+                session, user.id, "email_verification", hash_refresh_token(code)
+            )
+        )
+        if user is None or record is None or record.expires_at <= datetime.now(timezone.utc):
+            raise ValueError("invalid or expired verification code")
+        record.consumed_at = datetime.now(timezone.utc)
+        user.email_verified_at = datetime.now(timezone.utc)
+        user.status = "active"
+        await session.commit()
+
+    async def reset_password(self, session, email: str, code: str, password: str):
+        user = await self.repository.user_by_email(session, email.lower())
+        record = (
+            None
+            if user is None
+            else await self.repository.verification_code(
+                session, user.id, "password_reset", hash_refresh_token(code)
+            )
+        )
+        if user is None or record is None or record.expires_at <= datetime.now(timezone.utc):
+            raise ValueError("invalid or expired reset code")
+        record.consumed_at = datetime.now(timezone.utc)
+        user.password_hash = hash_password(password)
+        await self.repository.revoke_user_tokens(session, user.id, datetime.now(timezone.utc))
 
     async def claims(self, token: str):
         try:

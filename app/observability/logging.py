@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 
@@ -7,6 +8,12 @@ from fastapi import Request, Response
 
 def configure_logging(level: str) -> None:
     logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO), format="%(message)s")
+
+
+def redact(value: str) -> str:
+    return re.sub(
+        r"(?i)(password|token|secret|api[_-]?key)(\s*[=:]\s*)[^\s,]+", r"\1\2[REDACTED]", value
+    )
 
 
 async def request_id_middleware(

@@ -4,10 +4,12 @@ from fastapi import FastAPI
 
 from app.api.v1.health import router as health_router
 from app.api.v1.jobs import router as jobs_router
+from app.api.v1.metrics import router as metrics_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.preferences import router as preferences_router
 from app.api.v1.runs import router as runs_router
 from app.api.v1.sources import router as sources_router
+from app.api.v1.users import router as users_router
 from app.config import Settings, get_settings
 from app.db import RuntimeResources
 from app.observability.errors import AppError, app_error_handler
@@ -36,6 +38,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(runs_router)
     app.include_router(jobs_router)
     app.include_router(notifications_router)
+    app.include_router(metrics_router)
+    app.include_router(users_router)
     return app
 
 

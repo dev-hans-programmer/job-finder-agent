@@ -11,6 +11,9 @@ class NotificationService:
     def __init__(self, repository=None):
         self.repository = repository or NotificationRepository()
 
+    async def get_for_user(self, session, delivery_id, user_id):
+        return await self.repository.get_for_user(session, delivery_id, user_id)
+
     async def deliver(
         self,
         session,

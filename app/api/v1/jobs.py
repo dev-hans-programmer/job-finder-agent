@@ -5,10 +5,10 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies.auth import user_id_from_current_user
 from app.dependencies.database import get_session
 from app.dependencies.job_query import get_job_query_service
 from app.dependencies.matching import get_matching_service
-from app.dependencies.preferences import user_id_from_header
 from app.domain.jobs.query_schemas import FeedbackInput
 from app.domain.jobs.query_service import JobQueryService
 from app.domain.matching.service import MatchingService
@@ -48,7 +48,7 @@ def _match_payload(result) -> dict | None:
 
 @router.get("")
 async def list_jobs(
-    user_id: uuid.UUID = Depends(user_id_from_header),
+    user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
     page: int = Query(1, ge=1),
@@ -79,7 +79,7 @@ async def list_jobs(
 @router.get("/{job_id}")
 async def get_job(
     job_id: uuid.UUID,
-    user_id: uuid.UUID = Depends(user_id_from_header),
+    user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
 ) -> dict:
@@ -99,7 +99,7 @@ async def get_job(
 @router.get("/{job_id}/match")
 async def get_match(
     job_id: uuid.UUID,
-    user_id: uuid.UUID = Depends(user_id_from_header),
+    user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
 ) -> dict:
@@ -113,7 +113,7 @@ async def get_match(
 async def save_feedback(
     job_id: uuid.UUID,
     data: FeedbackInput,
-    user_id: uuid.UUID = Depends(user_id_from_header),
+    user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
 ) -> dict:
@@ -133,7 +133,7 @@ async def match_job(
     job_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     service: MatchingService = Depends(get_matching_service),
-    user_id: uuid.UUID = Depends(user_id_from_header),
+    user_id: uuid.UUID = Depends(user_id_from_current_user),
 ) -> dict:
     result = await service.match_job(session, job_id, user_id)
     if result is None:

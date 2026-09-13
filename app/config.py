@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     redis_url: str = Field(..., min_length=1)
     default_timezone: str = "Asia/Kolkata"
     secret_key: SecretStr | None = None
+    jwt_secret_key: str = "local-development-secret-change-me"
+    jwt_issuer: str = "job-radar-agent"
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
+    default_user_role: str = "user"
+    initial_admin_email: str | None = None
+    auth_require_token: bool = False
 
 
 @lru_cache

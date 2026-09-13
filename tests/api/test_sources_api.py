@@ -32,7 +32,7 @@ def test_list_sources(client):
 
 def test_run_unsupported_source_returns_validation_error(client):
     class UnsupportedService:
-        async def start_run(self, session, source_id):
+        async def start_run(self, session, source_id, user_id):
             raise ValueError("unsupported source kind")
 
     client.app.dependency_overrides[get_ingestion_service] = lambda: UnsupportedService()
@@ -45,7 +45,7 @@ def test_run_unsupported_source_returns_validation_error(client):
 
 def test_duplicate_run_does_not_dispatch_again(client):
     class ExistingRunService:
-        async def start_run(self, session, source_id):
+        async def start_run(self, session, source_id, user_id):
             return SimpleNamespace(id=uuid.uuid4(), status="running", already_running=True)
 
     client.app.dependency_overrides[get_ingestion_service] = lambda: ExistingRunService()

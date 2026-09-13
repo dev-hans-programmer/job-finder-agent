@@ -11,6 +11,7 @@ from app.notifications.base import NotificationMessage, is_retryable
 from app.notifications.email import EmailProvider
 from app.notifications.telegram import TelegramProvider
 from app.notifications.whatsapp import WhatsAppProvider
+from app.repositories.notifications import NotificationRepository
 
 
 class Session:
@@ -39,6 +40,9 @@ class Repo:
         return self.row, False
 
     async def get(self, session, delivery_id):
+        return self.row
+
+    async def get_for_user(self, session, delivery_id, user_id):
         return self.row
 
 
@@ -83,6 +87,17 @@ async def test_notification_delivery_and_idempotency():
         is existing.row
     )
     assert isinstance(get_notification_service(), NotificationService)
+
+
+@pytest.mark.asyncio
+async def test_notification_repository_scopes_delivery_to_user():
+    row = SimpleNamespace(id=uuid.uuid4())
+
+    class Session:
+        async def scalar(self, query):
+            return row
+
+    assert await NotificationRepository().get_for_user(Session(), row.id, uuid.uuid4()) is row
 
 
 @pytest.mark.asyncio

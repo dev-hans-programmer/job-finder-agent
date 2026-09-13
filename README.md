@@ -19,6 +19,7 @@ Implemented capabilities include:
 - Telegram and email notification provider boundaries
 - Notification idempotency and delivery status persistence
 - Scheduler cadence evaluation and workflow boundaries
+- Password authentication, rotating refresh tokens, `/me`, and configurable RBAC
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.
@@ -134,6 +135,10 @@ The local defaults are:
 ```env
 DATABASE_URL=postgresql+asyncpg://jobradar:jobradar@localhost:5432/jobradar
 REDIS_URL=redis://localhost:6379/0
+JWT_SECRET_KEY=replace-with-a-long-random-secret
+AUTH_REQUIRE_TOKEN=false
+# Optional first-admin bootstrap; set before registering this email.
+INITIAL_ADMIN_EMAIL=admin@example.com
 ```
 
 Start PostgreSQL and Redis, then apply migrations:
@@ -357,6 +362,13 @@ curl http://localhost:8000/api/v1/notifications/DELIVERY_ID
 | GET | `/health/live` | Process liveness |
 | GET | `/health/ready` | PostgreSQL and Redis readiness |
 | GET | `/metrics` | In-memory application metrics |
+| POST | `/api/v1/auth/register` | Register a user |
+| POST | `/api/v1/auth/login` | Issue access and refresh tokens |
+| POST | `/api/v1/auth/refresh` | Rotate a refresh token |
+| POST | `/api/v1/auth/logout` | Revoke a refresh-token family |
+| GET | `/api/v1/auth/me` | Read the authenticated user and roles |
+| POST | `/api/v1/roles` | Create an admin-managed role |
+| POST | `/api/v1/users/{user_id}/roles/{role_name}` | Assign an admin-managed role |
 | GET/PUT | `/api/v1/preferences` | Read or update active preferences |
 | POST | `/api/v1/preferences/validate` | Validate a preference payload |
 | GET/POST | `/api/v1/sources` | List or create sources |
@@ -490,6 +502,8 @@ cat backup.sql | docker compose exec -T postgres psql -U jobradar jobradar
 - Logs must pass through the redaction helper before secrets are written.
 - User/job queries are scoped through source ownership.
 - Deletion is explicit and targeted to the authenticated/default user.
+- User-owned API endpoints derive identity from `Authorization: Bearer <access-token>` and are represented by the Swagger `Authorize` control.
+- `X-User-ID` is accepted only as a temporary local-development compatibility path when `AUTH_REQUIRE_TOKEN=false`; it is ignored in strict mode.
 
 ## SDD specifications
 

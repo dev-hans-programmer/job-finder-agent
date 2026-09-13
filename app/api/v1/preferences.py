@@ -3,8 +3,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies.auth import user_id_from_current_user
 from app.dependencies.database import get_session
-from app.dependencies.preferences import get_service, user_id_from_header
+from app.dependencies.preferences import get_service
 from app.domain.preferences.schemas import PreferenceInput, PreferenceResponse
 from app.domain.preferences.service import PreferenceService
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/api/v1/preferences", tags=["preferences"])
 
 @router.get("", response_model=PreferenceResponse)
 async def get_preferences(
-    user_id: uuid.UUID = Depends(user_id_from_header),
+    user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: PreferenceService = Depends(get_service),
 ) -> PreferenceResponse:
@@ -31,7 +32,7 @@ async def validate_preferences(preferences: PreferenceInput) -> PreferenceInput:
 @router.put("", response_model=PreferenceResponse, status_code=status.HTTP_201_CREATED)
 async def update_preferences(
     preferences: PreferenceInput,
-    user_id: uuid.UUID = Depends(user_id_from_header),
+    user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: PreferenceService = Depends(get_service),
 ) -> PreferenceResponse:

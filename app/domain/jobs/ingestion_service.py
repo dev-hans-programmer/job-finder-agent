@@ -23,8 +23,14 @@ class IngestionService:
         self.redis = redis
         self.job_repository = JobRepository()
 
-    async def start_run(self, session: AsyncSession, source_id: uuid.UUID) -> IngestionRun:
-        source = await self.repository.get(session, source_id)
+    async def start_run(
+        self, session: AsyncSession, source_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> IngestionRun:
+        source = (
+            await self.repository.get_for_user(session, source_id, user_id)
+            if user_id is not None
+            else await self.repository.get(session, source_id)
+        )
         if source is None:
             raise LookupError("source not found")
         if source.kind not in self.adapters:

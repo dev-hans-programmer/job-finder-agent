@@ -22,3 +22,11 @@ class NotificationRepository:
 
     async def get(self, session: AsyncSession, delivery_id: uuid.UUID):
         return await session.get(NotificationDelivery, delivery_id)
+
+    async def get_for_user(self, session: AsyncSession, delivery_id: uuid.UUID, user_id: uuid.UUID):
+        return await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.id == delivery_id,
+                NotificationDelivery.user_id == user_id,
+            )
+        )

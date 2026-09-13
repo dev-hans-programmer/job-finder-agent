@@ -22,6 +22,13 @@ class SourceRepository:
     async def get(self, session: AsyncSession, source_id: uuid.UUID) -> Source | None:
         return await session.get(Source, source_id)
 
+    async def get_for_user(
+        self, session: AsyncSession, source_id: uuid.UUID, user_id: uuid.UUID
+    ) -> Source | None:
+        return await session.scalar(
+            select(Source).where(Source.id == source_id, Source.user_id == user_id)
+        )
+
     async def create_run(self, session: AsyncSession, source_id: uuid.UUID) -> IngestionRun:
         run = IngestionRun(source_id=source_id, status="running")
         session.add(run)
@@ -44,6 +51,16 @@ class SourceRepository:
 
     async def get_run(self, session: AsyncSession, run_id: uuid.UUID) -> IngestionRun | None:
         return await session.get(IngestionRun, run_id)
+
+    async def get_run_for_user(
+        self, session: AsyncSession, run_id: uuid.UUID, user_id: uuid.UUID
+    ) -> IngestionRun | None:
+        result = await session.execute(
+            select(IngestionRun)
+            .join(Source, Source.id == IngestionRun.source_id)
+            .where(IngestionRun.id == run_id, Source.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
 
     async def finish_run(
         self,

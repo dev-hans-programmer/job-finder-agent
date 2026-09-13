@@ -4,11 +4,15 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.preferences.models import User
 from app.ingestion.models import IngestionRun, Source
 
 
 class SourceRepository:
     async def create(self, session: AsyncSession, user_id: uuid.UUID, data: dict) -> Source:
+        if await session.get(User, user_id) is None:
+            session.add(User(id=user_id))
+            await session.flush()
         source = Source(user_id=user_id, **data)
         session.add(source)
         await session.commit()

@@ -10,6 +10,7 @@ from app.dependencies.deletion import get_deletion_service
 from app.domain.preferences.deletion_service import DeletionService
 from app.observability.logging import redact
 from app.observability.metrics import increment, snapshot
+from app.repositories.sources import SourceRepository
 
 
 class Session:
@@ -23,7 +24,13 @@ class Session:
     async def delete(self, user):
         self.deleted = user
 
+    def add(self, value):
+        pass
+
     async def commit(self):
+        pass
+
+    async def flush(self):
         pass
 
 
@@ -42,3 +49,16 @@ async def test_metrics_redaction_and_deletion():
     assert await delete_me(user.id, Session(user), DeletionService()) is None
     with pytest.raises(HTTPException):
         await delete_me(uuid.uuid4(), Session(), DeletionService())
+
+
+@pytest.mark.asyncio
+async def test_source_repository_provisions_missing_user():
+    class SourceSession(Session):
+        async def refresh(self, value):
+            value.id = uuid.uuid4()
+
+    session = SourceSession()
+    created = await SourceRepository().create(
+        session, uuid.uuid4(), {"kind": "test", "name": "Demo", "config": {}}
+    )
+    assert created.name == "Demo"

@@ -25,7 +25,7 @@ services:
       retries: 10
   api:
     build: .
-    command: uv run python -m app.processes.api
+    command: python -m app.processes.api
     environment:
       DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@postgres:5432/jobradar
       REDIS_URL: redis://redis:6379/0
@@ -39,7 +39,7 @@ services:
         condition: service_healthy
   worker:
     build: .
-    command: uv run python -m app.processes.worker
+    command: celery -A app.workers.celery_app worker --loglevel=INFO --concurrency=2
     environment:
       DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@postgres:5432/jobradar
       REDIS_URL: redis://redis:6379/0
@@ -50,11 +50,24 @@ services:
         condition: service_healthy
   scheduler:
     build: .
-    command: uv run python -m app.processes.scheduler
+    command: python -m app.processes.scheduler
     environment:
       DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@postgres:5432/jobradar
       REDIS_URL: redis://redis:6379/0
       SCHEDULER_POLL_SECONDS: "30"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  flower:
+    build: .
+    command: celery -A app.workers.celery_app flower --port=5555
+    environment:
+      DATABASE_URL: postgresql+asyncpg://jobradar:jobradar@postgres:5432/jobradar
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "5555:5555"
     depends_on:
       postgres:
         condition: service_healthy

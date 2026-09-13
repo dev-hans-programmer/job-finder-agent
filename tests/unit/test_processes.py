@@ -1,4 +1,3 @@
-import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,49 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import app.processes.api
-from app.processes.scheduler import run_scheduler, schedule_due_sources
-from app.processes.worker import run_worker
-from app.workers.ingestion import process_ingestion_message
-from app.workers.queue import INGESTION_QUEUE, dequeue, enqueue_ingestion
-
-
-class Redis:
-    def __init__(self, item=None):
-        self.values = []
-        self.item = item
-
-    async def rpush(self, key, value):
-        self.values.append((key, value))
-
-    async def blpop(self, key, timeout):
-        return self.item
-
-
-@pytest.mark.asyncio
-async def test_queue_round_trip_and_empty_poll():
-    source_id, run_id = uuid.uuid4(), uuid.uuid4()
-    redis = Redis()
-    await enqueue_ingestion(redis, source_id, run_id)
-    assert redis.values[0][0] == INGESTION_QUEUE
-    redis.item = (INGESTION_QUEUE, redis.values[0][1])
-    message = await dequeue(redis)
-    assert message == {"type": "ingestion", "source_id": str(source_id), "run_id": str(run_id)}
-    redis.item = None
-    assert await dequeue(redis) is None
-
-
-@pytest.mark.asyncio
-async def test_process_ingestion_message_ignores_other_types_and_dispatches():
-    resources = MagicMock()
-    with patch("app.workers.ingestion.dispatch_ingestion_run", new_callable=AsyncMock) as dispatch:
-        await process_ingestion_message(resources, {"type": "other"})
-        dispatch.assert_not_awaited()
-        source_id, run_id = uuid.uuid4(), uuid.uuid4()
-        await process_ingestion_message(
-            resources,
-            {"type": "ingestion", "source_id": str(source_id), "run_id": str(run_id)},
-        )
-        dispatch.assert_awaited_once_with(resources, source_id, run_id)
+import app.processes.worker
+from app.processes.scheduler import schedule_due_sources
+from app.workers.celery_app import celery_app
+from app.workers.tasks.ingestion import _run_ingestion, run_ingestion
 
 
 class SessionContext:
@@ -89,11 +49,11 @@ async def test_scheduler_enqueues_only_due_sources():
     service.start_run = AsyncMock(return_value=run)
     with (
         patch("app.processes.scheduler.build_ingestion_service", return_value=service),
-        patch("app.processes.scheduler.enqueue_ingestion", new_callable=AsyncMock) as enqueue,
+        patch("app.processes.scheduler.run_ingestion.delay") as enqueue,
     ):
         assert await schedule_due_sources(resources) == 1
     service.start_run.assert_awaited_once_with(session, due.id, due.user_id)
-    enqueue.assert_awaited_once_with(resources.redis, due.id, run.id)
+    enqueue.assert_called_once_with(str(due.id), str(run.id))
 
 
 @pytest.mark.asyncio
@@ -119,48 +79,55 @@ async def test_scheduler_skips_start_errors_and_running_runs():
     service.start_run.return_value = SimpleNamespace(id=uuid.uuid4(), already_running=True)
     with (
         patch("app.processes.scheduler.build_ingestion_service", return_value=service),
-        patch("app.processes.scheduler.enqueue_ingestion", new_callable=AsyncMock) as enqueue,
+        patch("app.processes.scheduler.run_ingestion.delay") as enqueue,
     ):
         assert await schedule_due_sources(resources) == 0
-    enqueue.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_worker_and_scheduler_shutdown_cleanly():
-    settings = SimpleNamespace(scheduler_poll_seconds=1)
-    resources = MagicMock()
-    resources.redis = MagicMock()
-    resources.close = AsyncMock()
-    stop = asyncio.Event()
-
-    async def process(resources, message):
-        stop.set()
-
-    with (
-        patch("app.processes.worker.RuntimeResources", return_value=resources),
-        patch("app.processes.worker.get_settings", return_value=settings),
-        patch("app.processes.worker.dequeue", new_callable=AsyncMock, return_value={"type": "x"}),
-        patch("app.processes.worker.process_ingestion_message", side_effect=process),
-    ):
-        await run_worker(stop)
-    resources.close.assert_awaited_once()
-
-    scheduler_resources = MagicMock()
-    scheduler_resources.close = AsyncMock()
-    scheduler_stop = asyncio.Event()
-
-    async def scheduled(resources):
-        scheduler_stop.set()
-        return 0
-
-    with (
-        patch("app.processes.scheduler.RuntimeResources", return_value=scheduler_resources),
-        patch("app.processes.scheduler.get_settings", return_value=settings),
-        patch("app.processes.scheduler.schedule_due_sources", side_effect=scheduled),
-    ):
-        await run_scheduler(scheduler_stop, poll_seconds=1)
-    scheduler_resources.close.assert_awaited_once()
+    enqueue.assert_not_called()
 
 
 def test_api_process_module_exposes_entrypoint():
     assert callable(app.processes.api.main)
+    assert callable(app.processes.worker.main)
+
+
+def test_celery_is_configured_for_reliable_json_tasks():
+    assert celery_app.conf.task_acks_late is True
+    assert celery_app.conf.task_reject_on_worker_lost is True
+    assert celery_app.conf.task_track_started is True
+    assert run_ingestion.name == "job_radar.ingestion"
+    assert run_ingestion.max_retries == 3
+
+
+@pytest.mark.asyncio
+async def test_celery_ingestion_task_skips_missing_source_and_completes():
+    resources = MagicMock()
+    resources.close = AsyncMock()
+    session = MagicMock()
+    resources.session_factory.return_value = SessionContext(session)
+    service = MagicMock()
+    service.repository.get = AsyncMock(return_value=None)
+    with (
+        patch("app.workers.tasks.ingestion.RuntimeResources", return_value=resources),
+        patch("app.workers.tasks.ingestion.build_ingestion_service", return_value=service),
+        patch("app.workers.tasks.ingestion.get_settings", return_value=SimpleNamespace()),
+    ):
+        result = await _run_ingestion(str(uuid.uuid4()), str(uuid.uuid4()))
+    assert result["status"] == "skipped"
+    resources.close.assert_awaited_once()
+
+    source = SimpleNamespace(id=uuid.uuid4(), config={}, kind="greenhouse", name="Demo")
+    service.repository.get = AsyncMock(return_value=source)
+    with (
+        patch("app.workers.tasks.ingestion.RuntimeResources", return_value=resources),
+        patch("app.workers.tasks.ingestion.build_ingestion_service", return_value=service),
+        patch("app.workers.tasks.ingestion.get_settings", return_value=SimpleNamespace()),
+        patch("app.workers.tasks.ingestion.execute_ingestion_run", new_callable=AsyncMock),
+    ):
+        result = await _run_ingestion(str(source.id), str(uuid.uuid4()))
+    assert result["status"] == "completed"
+
+
+def test_celery_task_wrapper_runs_async_body():
+    with patch("app.workers.tasks.ingestion._run_ingestion", new_callable=AsyncMock) as run:
+        run.return_value = {"status": "completed"}
+        assert run_ingestion.run(str(uuid.uuid4()), str(uuid.uuid4()))["status"] == "completed"

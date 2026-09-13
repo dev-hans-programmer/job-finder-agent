@@ -5,7 +5,7 @@ PYTEST := $(UV) run pytest
 COMPOSE := docker compose
 
 .PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs
-.PHONY: migrate migration run run-api run-worker run-scheduler run-all test test-unit test-integration test-api coverage lint format check qa clean
+.PHONY: migrate migration run run-api run-worker run-scheduler run-flower run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
 	@printf '%s\n' \
@@ -24,6 +24,7 @@ help:
 	  'run-api            Run the API process' \
 	  'run-worker         Run the worker process' \
 	  'run-scheduler      Run the scheduler process' \
+	  'run-flower         Run the Celery monitoring dashboard' \
 	  'run-all            Start all application processes in Docker' \
 	  'test               Run all tests' \
 	  'test-unit          Run unit tests' \
@@ -55,13 +56,13 @@ services-logs:
 	$(COMPOSE) logs -f postgres redis
 
 app-up:
-	$(COMPOSE) up -d --build api worker scheduler
+	$(COMPOSE) up -d --build api worker scheduler flower
 
 app-down:
-	$(COMPOSE) stop api worker scheduler
+	$(COMPOSE) stop api worker scheduler flower
 
 app-logs:
-	$(COMPOSE) logs -f api worker scheduler
+	$(COMPOSE) logs -f api worker scheduler flower
 
 migrate:
 	$(UV) run alembic upgrade head
@@ -81,6 +82,9 @@ run-worker:
 
 run-scheduler:
 	$(UV) run python -m app.processes.scheduler
+
+run-flower:
+	$(UV) run celery -A app.workers.celery_app flower --port=5555
 
 run-all: app-up
 

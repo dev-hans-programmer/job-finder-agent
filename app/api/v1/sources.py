@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.auth import user_id_from_current_user
@@ -11,7 +11,7 @@ from app.dependencies.sources import get_ingestion_service, get_source_service
 from app.domain.jobs.ingestion_service import IngestionService
 from app.domain.jobs.source_service import SourceService
 from app.ingestion.schemas import RunResponse, SourceInput, SourceResponse
-from app.workers.queue import enqueue_ingestion
+from app.workers.tasks.ingestion import run_ingestion
 
 router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
 
@@ -38,7 +38,6 @@ async def list_sources(
 @router.post("/{source_id}/run", response_model=RunResponse, status_code=status.HTTP_202_ACCEPTED)
 async def run_source(
     source_id: uuid.UUID,
-    request: Request,
     user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
     service: IngestionService = Depends(get_ingestion_service),
@@ -50,5 +49,5 @@ async def run_source(
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     if not getattr(run, "already_running", False):
-        await enqueue_ingestion(request.app.state.resources.redis, source_id, run.id)
+        run_ingestion.delay(str(source_id), str(run.id))
     return RunResponse(run_id=str(run.id), status=run.status)

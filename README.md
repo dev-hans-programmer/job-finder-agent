@@ -20,7 +20,7 @@ Implemented capabilities include:
 - Notification idempotency and delivery status persistence
 - Scheduler cadence evaluation and workflow boundaries
 - Password authentication, rotating refresh tokens, `/me`, and configurable RBAC
-- Separate API, worker, and scheduler processes with a Redis queue boundary
+- Separate API, worker, and scheduler processes with Celery/Redis task execution
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.
@@ -172,7 +172,7 @@ make app-up
 make app-logs
 ```
 
-The API creates an ingestion run and publishes a small Redis message. The worker consumes that message and updates the run. The scheduler periodically finds due sources and publishes the same message type. Celery is intentionally reserved for the next production-hardening item.
+The API creates an ingestion run and dispatches a Celery task. Redis brokers the task to the worker, which updates the run. The scheduler dispatches the same task for due sources. Flower provides task and worker monitoring at `http://localhost:5555`.
 
 The API is available at:
 
@@ -305,7 +305,7 @@ curl -X POST http://localhost:8000/api/v1/sources \
   -d '{
     "kind": "greenhouse",
     "name": "OpenAI",
-    "config": {"board": "openai"}
+    "config": {"board": "stripe"}
   }'
 ```
 
@@ -538,6 +538,9 @@ The implementation sequence is documented in `specs/`:
 7. `007-notifications` — notification delivery state and providers
 8. `008-scheduling-workflows` — cadence and workflow boundaries
 9. `009-observability-deployment` — operations, CI, health, and deployment
+10. `010-authentication-authorisation` — authentication and role-based authorization
+11. `011-separate-processes` — API, worker, and scheduler process boundaries
+12. `012-celery-background-jobs` — Celery execution and Flower monitoring
 
 Each spec contains:
 

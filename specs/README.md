@@ -35,6 +35,10 @@ Tests are organized in three top-level folders: `tests/unit/`, `tests/integratio
 009-observability-deployment
     ↓
 010-authentication-authorisation
+    ↓
+011-separate-processes
+    ↓
+012-celery-background-jobs
 ```
 
 Specs may be developed in parallel only where their dependency is already implemented. Each spec must leave the repository passing all existing tests.

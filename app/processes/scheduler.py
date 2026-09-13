@@ -10,7 +10,7 @@ from app.db import RuntimeResources
 from app.dependencies.sources import build_ingestion_service
 from app.domain.jobs.ingestion_service import IngestionService
 from app.ingestion.models import Source
-from app.workers.queue import enqueue_ingestion
+from app.workers.tasks.ingestion import run_ingestion
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ async def schedule_due_sources(resources: RuntimeResources) -> int:
             except (LookupError, ValueError, RuntimeError):
                 continue
             if not getattr(run, "already_running", False):
-                await enqueue_ingestion(resources.redis, source.id, run.id)
+                run_ingestion.delay(str(source.id), str(run.id))
                 scheduled += 1
         return scheduled
 

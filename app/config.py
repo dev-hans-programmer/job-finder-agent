@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     default_user_role: str = "user"
     initial_admin_email: str | None = None
     auth_require_token: bool = False
+    scheduler_poll_seconds: int = 30
 
 
 @lru_cache

@@ -4,8 +4,8 @@ UV ?= uv
 PYTEST := $(UV) run pytest
 COMPOSE := docker compose
 
-.PHONY: help install install-hooks pre-commit services-up services-down services-logs migrate migration
-.PHONY: run test test-unit test-integration test-api coverage lint format check qa clean
+.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs
+.PHONY: migrate migration run run-api run-worker run-scheduler run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
 	@printf '%s\n' \
@@ -15,9 +15,16 @@ help:
 	  'services-up        Start PostgreSQL and Redis' \
 	  'services-down      Stop PostgreSQL and Redis' \
 	  'services-logs      Follow PostgreSQL/Redis logs' \
+	  'app-up             Start API, worker, and scheduler containers' \
+	  'app-down           Stop API, worker, and scheduler containers' \
+	  'app-logs           Follow API/worker/scheduler logs' \
 	  'migrate            Apply Alembic migrations' \
 	  'migration          Create a new Alembic migration (MSG="...")' \
 	  'run                Run the FastAPI development server' \
+	  'run-api            Run the API process' \
+	  'run-worker         Run the worker process' \
+	  'run-scheduler      Run the scheduler process' \
+	  'run-all            Start all application processes in Docker' \
 	  'test               Run all tests' \
 	  'test-unit          Run unit tests' \
 	  'test-integration   Run integration tests' \
@@ -39,13 +46,22 @@ pre-commit:
 	$(UV) run pre-commit run --all-files
 
 services-up:
-	$(COMPOSE) up -d
+	$(COMPOSE) up -d postgres redis
 
 services-down:
 	$(COMPOSE) down
 
 services-logs:
 	$(COMPOSE) logs -f postgres redis
+
+app-up:
+	$(COMPOSE) up -d --build api worker scheduler
+
+app-down:
+	$(COMPOSE) stop api worker scheduler
+
+app-logs:
+	$(COMPOSE) logs -f api worker scheduler
 
 migrate:
 	$(UV) run alembic upgrade head
@@ -55,7 +71,18 @@ migration:
 	$(UV) run alembic revision -m "$(MSG)"
 
 run:
+	$(MAKE) run-api
+
+run-api:
 	$(UV) run uvicorn app.main:app --reload --host 127.0.0.1 --port 8005
+
+run-worker:
+	$(UV) run python -m app.processes.worker
+
+run-scheduler:
+	$(UV) run python -m app.processes.scheduler
+
+run-all: app-up
 
 test:
 	$(PYTEST) tests/unit tests/integration tests/api -q

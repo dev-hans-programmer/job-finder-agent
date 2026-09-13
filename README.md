@@ -20,6 +20,7 @@ Implemented capabilities include:
 - Notification idempotency and delivery status persistence
 - Scheduler cadence evaluation and workflow boundaries
 - Password authentication, rotating refresh tokens, `/me`, and configurable RBAC
+- Separate API, worker, and scheduler processes with a Redis queue boundary
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.
@@ -153,6 +154,25 @@ Start the API:
 ```bash
 make run
 ```
+
+Run the three application processes independently during development:
+
+```bash
+make services-up
+make migrate
+make run-api       # terminal 1
+make run-worker    # terminal 2
+make run-scheduler # terminal 3
+```
+
+Or start the three application containers together:
+
+```bash
+make app-up
+make app-logs
+```
+
+The API creates an ingestion run and publishes a small Redis message. The worker consumes that message and updates the run. The scheduler periodically finds due sources and publishes the same message type. Celery is intentionally reserved for the next production-hardening item.
 
 The API is available at:
 

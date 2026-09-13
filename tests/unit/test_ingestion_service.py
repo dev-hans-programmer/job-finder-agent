@@ -122,9 +122,19 @@ async def test_ingestion_source_lock():
     repository.create_run.return_value = object()
     redis = AsyncMock()
     redis.set.return_value = True
-    service = IngestionService(repository, {"greenhouse": object()}, redis)
+
+    class Adapter:
+        async def fetch(self, config):
+            if False:
+                yield config
+
+    service = IngestionService(repository, {"greenhouse": Adapter()}, redis)
     await service.start_run(AsyncMock(), source.id)
     redis.set.assert_awaited_once()
+    run = IngestionRun(id=uuid.uuid4(), source_id=source.id, status="running")
+    repository.get_run.return_value = run
+    await service.execute_run(AsyncMock(), run.id, {}, "greenhouse", source.id, "Demo")
+    redis.delete.assert_awaited_once()
     redis.set.return_value = False
     with pytest.raises(RuntimeError, match="already running"):
         await service.start_run(AsyncMock(), source.id)

@@ -113,10 +113,13 @@ async def test_adapter_error_for_client_and_json_failures():
 
     from app.ingestion.base import RateLimiter
 
+    await RateLimiter().wait()
     await RateLimiter(0.00001).wait()
 
     class ClientSuccess:
         async def get(self, url):
             return httpx.Response(200, request=request, json={"ok": True})
 
-    assert await get_json(ClientSuccess(), "https://example.test") == {"ok": True}
+    assert await get_json(ClientSuccess(), "https://example.test", rate_limiter=RateLimiter()) == {
+        "ok": True
+    }

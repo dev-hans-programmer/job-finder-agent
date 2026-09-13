@@ -21,7 +21,13 @@ def hash_refresh_token(token: str) -> str:
 
 
 def create_access_token(
-    user_id: uuid.UUID, email: str, roles: list[str], secret: str, minutes: int, issuer: str
+    user_id: uuid.UUID,
+    email: str,
+    roles: list[str],
+    secret: str,
+    minutes: int,
+    issuer: str,
+    session_id: uuid.UUID | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode(
@@ -34,6 +40,7 @@ def create_access_token(
             "iat": now,
             "exp": now + timedelta(minutes=minutes),
             "iss": issuer,
+            **({"sid": str(session_id)} if session_id else {}),
         },
         secret,
         algorithm="HS256",

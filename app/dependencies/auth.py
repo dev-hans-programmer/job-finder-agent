@@ -16,6 +16,7 @@ async def get_current_user(
     session=Depends(get_session),
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     settings=Depends(get_settings),
+    request: Request = None,
 ):
     # Direct unit calls do not receive FastAPI dependency injection.
     if hasattr(settings, "dependency"):
@@ -44,6 +45,19 @@ async def get_current_user(
             authorization[7:], settings.jwt_secret_key, settings.jwt_issuer
         )
         user = await session.get(User, uuid.UUID(claims["sub"]))
+        if getattr(settings, "auth_session_management_enabled", False):
+            session_id = claims.get("sid")
+            auth_session = (
+                await AuthRepository().auth_session(
+                    session, uuid.UUID(session_id), uuid.UUID(claims["sub"])
+                )
+                if session_id
+                else None
+            )
+            if auth_session is None or auth_session.revoked_at is not None:
+                raise HTTPException(status_code=401, detail="session is revoked")
+            if request is not None:
+                request.state.session_id = auth_session.id
     except Exception as error:
         raise HTTPException(status_code=401, detail="invalid authentication token") from error
     if user is None or user.status != "active":

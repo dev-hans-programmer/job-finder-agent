@@ -20,6 +20,16 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class SessionResponse(BaseModel):
+    id: str
+    device_name: str | None
+    user_agent: str | None
+    ip_address: str | None
+    created_at: str
+    last_used_at: str
+    current: bool
+
+
 class UserResponse(BaseModel):
     id: str
     email: str

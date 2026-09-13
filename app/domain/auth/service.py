@@ -11,7 +11,7 @@ from app.auth.security import (
     hash_refresh_token,
     verify_password,
 )
-from app.domain.preferences.models import RefreshToken, User
+from app.domain.preferences.models import AuthSession, RefreshToken, User
 from app.repositories.auth import AuthRepository
 
 
@@ -53,11 +53,22 @@ class AuthService:
             raise ValueError("invalid credentials")
         return user
 
-    async def issue_tokens(self, session, user):
+    async def issue_tokens(self, session, user, session_id=None, session_metadata=None):
         roles = await self.repository.roles(session, user.id)
+        if getattr(self.settings, "auth_session_management_enabled", False) and session_id is None:
+            metadata = session_metadata or {}
+            auth_session = AuthSession(
+                user_id=user.id,
+                device_name=metadata.get("device_name"),
+                user_agent=metadata.get("user_agent"),
+                ip_address=metadata.get("ip_address"),
+            )
+            await self.repository.save_auth_session(session, auth_session)
+            session_id = auth_session.id
         refresh = secrets.token_urlsafe(48)
         token = RefreshToken(
             user_id=user.id,
+            session_id=session_id,
             token_hash=hash_refresh_token(refresh),
             family_id=uuid.uuid4(),
             expires_at=datetime.now(timezone.utc)
@@ -71,6 +82,7 @@ class AuthService:
             self.settings.jwt_secret_key,
             self.settings.access_token_expire_minutes,
             self.settings.jwt_issuer,
+            session_id=session_id,
         )
         return access, refresh
 
@@ -87,7 +99,27 @@ class AuthService:
         user = await self.repository.user(session, token.user_id)
         if user is None or user.status != "active":
             raise ValueError("invalid refresh token")
-        return await self.issue_tokens(session, user)
+        return await self.issue_tokens(session, user, session_id=getattr(token, "session_id", None))
+
+    async def list_sessions(self, session, user_id):
+        if not getattr(self.settings, "auth_session_management_enabled", False):
+            return []
+        return await self.repository.auth_sessions(session, user_id)
+
+    async def revoke_session(self, session, user_id, session_id):
+        if not getattr(self.settings, "auth_session_management_enabled", False):
+            raise ValueError("session management is disabled")
+        if not await self.repository.revoke_auth_session(
+            session, session_id, user_id, datetime.now(timezone.utc)
+        ):
+            raise ValueError("session not found")
+
+    async def revoke_other_sessions(self, session, user_id, current_session_id):
+        if not getattr(self.settings, "auth_session_management_enabled", False):
+            raise ValueError("session management is disabled")
+        return await self.repository.revoke_other_auth_sessions(
+            session, user_id, current_session_id, datetime.now(timezone.utc)
+        )
 
     async def claims(self, token: str):
         try:

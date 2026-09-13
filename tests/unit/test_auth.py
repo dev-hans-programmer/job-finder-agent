@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -183,3 +184,85 @@ async def test_auth_repository_role_and_assignment_branches():
 
     await repository.assign_role(AssignmentSession(), uuid.uuid4(), role.id)
     await repository.assign_role(AssignmentSession(SimpleNamespace()), uuid.uuid4(), role.id)
+
+
+@pytest.mark.asyncio
+async def test_auth_sessions_repository_and_service_paths():
+    repository = AuthRepository()
+    user_id, current_id, other_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    class SessionQueries(Session):
+        def __init__(self, value=None, values=None):
+            self.value = value
+            self.values = values or []
+            self.executed = False
+
+        async def scalar(self, query):
+            return self.value
+
+        async def execute(self, query):
+            self.executed = True
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: self.values))
+
+    auth_session = SimpleNamespace(id=current_id, revoked_at=None)
+    session = SessionQueries(auth_session)
+    await repository.save_auth_session(session, SimpleNamespace(id=uuid.uuid4()))
+    assert await repository.auth_session(session, current_id, user_id) is auth_session
+    assert await repository.auth_sessions(session, user_id) == []
+    assert await repository.revoke_auth_session(
+        session, current_id, user_id, datetime.now(timezone.utc)
+    )
+    assert auth_session.revoked_at is not None
+    assert not await repository.revoke_auth_session(
+        SessionQueries(None), current_id, user_id, datetime.now(timezone.utc)
+    )
+
+    sessions = [
+        SimpleNamespace(id=current_id, revoked_at=None),
+        SimpleNamespace(id=other_id, revoked_at=None),
+    ]
+    other_query = SessionQueries(values=sessions)
+    assert (
+        await repository.revoke_other_auth_sessions(
+            other_query, user_id, current_id, datetime.now(timezone.utc)
+        )
+        == 1
+    )
+    empty_query = SessionQueries(values=[SimpleNamespace(id=current_id, revoked_at=None)])
+    assert (
+        await repository.revoke_other_auth_sessions(
+            empty_query, user_id, current_id, datetime.now(timezone.utc)
+        )
+        == 0
+    )
+
+    settings = SimpleNamespace(
+        auth_session_management_enabled=True,
+        refresh_token_expire_days=30,
+        jwt_secret_key="secret",
+        access_token_expire_minutes=15,
+        jwt_issuer="issuer",
+    )
+    session_repo = Repo()
+    session_repo.save_auth_session = AsyncMock(
+        side_effect=lambda _, value: setattr(value, "id", current_id)
+    )
+    session_repo.auth_sessions = AsyncMock(return_value=sessions)
+    session_repo.revoke_auth_session = AsyncMock(return_value=True)
+    session_repo.revoke_other_auth_sessions = AsyncMock(return_value=1)
+    service = AuthService(session_repo, settings)
+    user = SimpleNamespace(id=user_id, email="a@example.com")
+    await service.issue_tokens(Session(), user, session_metadata={"device_name": "Laptop"})
+    assert await service.list_sessions(Session(), user_id) == sessions
+    await service.revoke_session(Session(), user_id, current_id)
+    assert await service.revoke_other_sessions(Session(), user_id, current_id) == 1
+    session_repo.revoke_auth_session.return_value = False
+    with pytest.raises(ValueError):
+        await service.revoke_session(Session(), user_id, current_id)
+
+    disabled = AuthService(Repo(), SimpleNamespace(auth_session_management_enabled=False))
+    assert await disabled.list_sessions(Session(), user_id) == []
+    with pytest.raises(ValueError):
+        await disabled.revoke_session(Session(), user_id, current_id)
+    with pytest.raises(ValueError):
+        await disabled.revoke_other_sessions(Session(), user_id, current_id)

@@ -5,7 +5,14 @@ from unittest.mock import AsyncMock, patch
 import jwt
 import pytest
 
-from app.api.v1.auth import assign_role, create_role, logout
+from app.api.v1.auth import (
+    assign_role,
+    create_role,
+    logout,
+    revoke_other_sessions,
+    revoke_session,
+    sessions,
+)
 from app.auth.schemas import RefreshInput, RoleInput
 from app.auth.security import create_access_token
 from app.dependencies.auth import get_current_user, require_role
@@ -71,6 +78,13 @@ async def test_auth_role_routes_and_dependency_branches():
     response = await create_role(RoleInput(name="operator"), None, None, None, service)
     assert response.data["name"] == "operator"
     await logout(RefreshInput(refresh_token="x" * 20), None, service)
+    service.settings = SimpleNamespace(auth_session_management_enabled=True)
+    service.repository.refresh_token.return_value = SimpleNamespace(
+        family_id=uuid.uuid4(), session_id=None, user_id=uuid.uuid4()
+    )
+    service.repository.revoke_tokens = AsyncMock()
+    session = SimpleNamespace(commit=AsyncMock())
+    await logout(RefreshInput(refresh_token="x" * 20), session, service)
 
     assert await assign_role(uuid.uuid4(), "user", None, None, service) is None
     service.assign_role.side_effect = ValueError("user or role not found")
@@ -127,6 +141,35 @@ async def test_auth_dependency_modes():
         with pytest.raises(Exception):
             await get_current_user(InactiveSession(), f"Bearer {token}")
 
+        request = SimpleNamespace(state=SimpleNamespace())
+        session_settings = SimpleNamespace(
+            auth_require_token=True,
+            auth_session_management_enabled=True,
+            jwt_secret_key="s",
+            jwt_issuer="i",
+        )
+        session_token = create_access_token(user.id, "a@b.com", [], "s", 1, "i", user.id)
+        with patch(
+            "app.dependencies.auth.AuthRepository",
+            return_value=SimpleNamespace(
+                auth_session=AsyncMock(return_value=SimpleNamespace(id=user.id, revoked_at=None))
+            ),
+        ):
+            assert await get_current_user(
+                Session(), f"Bearer {session_token}", session_settings, request
+            )
+        assert request.state.session_id == user.id
+        with patch(
+            "app.dependencies.auth.AuthRepository",
+            return_value=SimpleNamespace(
+                auth_session=AsyncMock(return_value=SimpleNamespace(id=user.id, revoked_at=None))
+            ),
+        ):
+            assert (
+                await get_current_user(Session(), f"Bearer {session_token}", session_settings)
+                is user
+            )
+
     with patch(
         "app.dependencies.auth.AuthRepository",
         return_value=SimpleNamespace(roles=AsyncMock(return_value=[])),
@@ -148,3 +191,56 @@ def test_decode_rejects_wrong_token_type():
         from app.auth.security import decode_access_token
 
         decode_access_token(token, "s", "i")
+
+
+@pytest.mark.asyncio
+async def test_session_route_error_branches():
+    request = SimpleNamespace(state=SimpleNamespace(session_id=None))
+    user = SimpleNamespace(id=uuid.uuid4())
+    service = SimpleNamespace(list_sessions=AsyncMock(return_value=[]))
+    response = await sessions(request, user, None, service)
+    assert response.data == []
+    with pytest.raises(Exception):
+        await revoke_other_sessions(request, user, None, service)
+    request.state.session_id = uuid.uuid4()
+    service.revoke_other_sessions = AsyncMock(side_effect=ValueError("disabled"))
+    with pytest.raises(Exception):
+        await revoke_other_sessions(request, user, None, service)
+    service.revoke_session = AsyncMock(side_effect=ValueError("not found"))
+    with pytest.raises(Exception):
+        await revoke_session(uuid.uuid4(), user, None, service)
+
+
+def test_session_management_flag_tracks_and_revokes_sessions(client):
+    client.app.state.settings.auth_session_management_enabled = True
+    email = f"sessions-{uuid.uuid4()}@example.com"
+    password = "SessionPassword123!"
+    assert (
+        client.post(
+            "/api/v1/auth/register", json={"email": email, "password": password}
+        ).status_code
+        == 201
+    )
+    first = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+        headers={"X-Device-Name": "MacBook"},
+    ).json()["data"]
+    second = client.post("/api/v1/auth/login", json={"email": email, "password": password}).json()[
+        "data"
+    ]
+    first_headers = {"Authorization": f"Bearer {first['access_token']}"}
+    sessions = client.get("/api/v1/auth/sessions", headers=first_headers)
+    assert sessions.status_code == 200
+    assert len(sessions.json()["data"]) == 2
+    assert any(item["current"] for item in sessions.json()["data"])
+    assert client.delete("/api/v1/auth/sessions/others", headers=first_headers).status_code == 204
+    remaining = client.get("/api/v1/auth/sessions", headers=first_headers)
+    assert len(remaining.json()["data"]) == 1
+    session_id = remaining.json()["data"][0]["id"]
+    assert (
+        client.delete(f"/api/v1/auth/sessions/{session_id}", headers=first_headers).status_code
+        == 204
+    )
+    assert client.get("/api/v1/auth/me", headers=first_headers).status_code == 401
+    assert second["refresh_token"]

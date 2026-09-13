@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     rate_limit_auth_requests: int = Field(10, ge=1)
     rate_limit_fail_open: bool = True
     trusted_proxy_ips: str = ""
+    auth_session_management_enabled: bool = False
 
 
 @lru_cache

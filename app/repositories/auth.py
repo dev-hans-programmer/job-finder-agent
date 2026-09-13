@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 
-from app.domain.preferences.models import RefreshToken, Role, User, UserRole
+from app.domain.preferences.models import AuthSession, RefreshToken, Role, User, UserRole
 
 
 class AuthRepository:
@@ -54,3 +54,55 @@ class AuthRepository:
     async def save_refresh_token(self, session, token: RefreshToken):
         session.add(token)
         await session.commit()
+
+    async def save_auth_session(self, session, auth_session: AuthSession):
+        session.add(auth_session)
+        await session.flush()
+
+    async def auth_session(self, session, session_id: uuid.UUID, user_id: uuid.UUID):
+        return await session.scalar(
+            select(AuthSession).where(AuthSession.id == session_id, AuthSession.user_id == user_id)
+        )
+
+    async def auth_sessions(self, session, user_id: uuid.UUID):
+        result = await session.execute(
+            select(AuthSession)
+            .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+            .order_by(AuthSession.last_used_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def revoke_auth_session(self, session, session_id: uuid.UUID, user_id: uuid.UUID, now):
+        auth_session = await self.auth_session(session, session_id, user_id)
+        if auth_session is None or auth_session.revoked_at is not None:
+            return False
+        auth_session.revoked_at = now
+        await session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.session_id == session_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+        await session.commit()
+        return True
+
+    async def revoke_other_auth_sessions(
+        self, session, user_id: uuid.UUID, current_session_id: uuid.UUID, now
+    ):
+        sessions = await self.auth_sessions(session, user_id)
+        count = 0
+        for auth_session in sessions:
+            if auth_session.id != current_session_id:
+                auth_session.revoked_at = now
+                count += 1
+        if count:
+            await session.execute(
+                update(RefreshToken)
+                .where(
+                    RefreshToken.user_id == user_id,
+                    RefreshToken.session_id != current_session_id,
+                    RefreshToken.revoked_at.is_(None),
+                )
+                .values(revoked_at=now)
+            )
+            await session.commit()
+        return count

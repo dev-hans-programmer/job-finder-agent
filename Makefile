@@ -4,8 +4,9 @@ UV ?= uv
 PYTEST := $(UV) run pytest
 COMPOSE := docker compose
 STAGING_PROJECT ?= job-radar-staging
+TESTING_PROJECT ?= job-radar-testing
 
-.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down staging-up staging-down staging-migrate staging-smoke
+.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down staging-up staging-down staging-migrate staging-smoke test-services-up test-services-down test-migrate test-all db-clean
 .PHONY: migrate migration run run-api run-worker run-scheduler run-flower backup backup-verify restore run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
@@ -25,6 +26,11 @@ help:
 	  'staging-down      Stop the staging Compose environment' \
 	  'staging-migrate   Apply migrations in staging' \
 	  'staging-smoke     Run staging readiness smoke tests' \
+	  'test-services-up  Start isolated testing PostgreSQL and Redis' \
+	  'test-services-down Stop isolated testing PostgreSQL and Redis' \
+	  'test-migrate      Apply migrations to the testing database' \
+	  'test-all          Start test infra, migrate, run checks, then clean up' \
+	  'db-clean          Delete all data from the default local database' \
 	  'migrate            Apply Alembic migrations' \
 	  'migration          Create a new Alembic migration (MSG="...")' \
 	  'run                Run the FastAPI development server' \
@@ -89,6 +95,23 @@ staging-migrate:
 
 staging-smoke:
 	STAGING_URL=$${STAGING_URL:-http://localhost:8001} ./scripts/staging-smoke.sh
+
+test-services-up:
+	$(COMPOSE) -p $(TESTING_PROJECT) -f docker-compose.testing.yml up -d
+
+test-services-down:
+	$(COMPOSE) -p $(TESTING_PROJECT) -f docker-compose.testing.yml down
+
+test-migrate:
+	APP_ENV=testing DATABASE_URL=$${TEST_DATABASE_URL:-postgresql+asyncpg://jobradar_test:test_password@localhost:5433/jobradar_test} REDIS_URL=$${TEST_REDIS_URL:-redis://localhost:6380/1} $(UV) run alembic upgrade head
+
+test-all:
+	@trap '$(MAKE) test-services-down >/dev/null' EXIT INT TERM; $(MAKE) test-services-up && $(MAKE) test-migrate && $(MAKE) check
+
+db-clean:
+	@test "$(CONFIRM)" = "YES" || (echo 'Refusing to clean the local database. Re-run with: make db-clean CONFIRM=YES' && exit 1)
+	$(COMPOSE) exec -T postgres psql -U jobradar -d jobradar -c 'TRUNCATE TABLE users, roles, user_roles, refresh_tokens, preference_profiles, sources, ingestion_runs, jobs, job_source_records, match_results, job_feedback, notification_deliveries CASCADE;'
+	@echo 'Default local database data deleted; schema and Alembic history preserved.'
 
 app-logs:
 	$(COMPOSE) logs -f api worker scheduler flower

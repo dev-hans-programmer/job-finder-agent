@@ -25,6 +25,7 @@ Implemented capabilities include:
 - Optional OpenTelemetry tracing for API, database, provider, Redis, and Celery activity
 - Local Prometheus, Grafana, Loki, Tempo, and OpenTelemetry Collector observability stack
 - Consistent JSON success envelopes with request correlation and pagination metadata
+- Isolated PostgreSQL/Redis testing environment with dedicated credentials
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.
@@ -128,6 +129,30 @@ Install dependencies:
 ```bash
 uv sync
 ```
+
+Start the isolated test dependencies before integration/API tests:
+
+```bash
+make test-services-up
+make test-migrate
+make check
+```
+
+Tests use `APP_ENV=testing`, a separate `jobradar_test` database, and Redis database `1`; they do not use local development data.
+
+To start the test infrastructure, migrate it, run the complete quality gate, and automatically stop the test infrastructure afterward, use:
+
+```bash
+make test-all
+```
+
+To delete all application data from the default local `jobradar` database while preserving its schema:
+
+```bash
+make db-clean CONFIRM=YES
+```
+
+This command is intentionally protected and must never be used against staging or production.
 
 Create the environment file:
 

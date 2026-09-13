@@ -1,9 +1,11 @@
 import os
 
-os.environ.setdefault(
-    "DATABASE_URL", "postgresql+asyncpg://jobradar:jobradar@localhost:5432/jobradar"
+os.environ["APP_ENV"] = "testing"
+os.environ["DATABASE_URL"] = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://jobradar_test:test_password@localhost:5433/jobradar_test",
 )
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ["REDIS_URL"] = os.getenv("TEST_REDIS_URL", "redis://localhost:6380/1")
 # Tests must not inherit a developer's real exporter configuration. Individual
 # telemetry tests enable instrumentation explicitly with isolated settings.
 os.environ["OTEL_ENABLED"] = "false"

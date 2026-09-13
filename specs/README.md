@@ -45,6 +45,8 @@ Tests are organized in three top-level folders: `tests/unit/`, `tests/integratio
 014-opentelemetry
     ↓
 015-observability-stack
+    ↓
+016-staging-deployment
 ```
 
 Specs may be developed in parallel only where their dependency is already implemented. Each spec must leave the repository passing all existing tests.

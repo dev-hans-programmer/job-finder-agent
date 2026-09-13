@@ -1,0 +1,63 @@
+name: Staging deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Container tag to deploy
+        required: false
+        default: staging
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: image
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - id: tag
+        env:
+          INPUT_TAG: ${{ inputs.image_tag }}
+        run: echo "tag=${INPUT_TAG:-${GITHUB_SHA}}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.image }}:${{ steps.tag.outputs.tag }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/staging_key
+          chmod 600 ~/.ssh/staging_key
+          ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts
+      - name: Deploy and smoke test
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          TAG: ${{ needs.build.outputs.tag }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          STAGING_APP_DIR: ${{ secrets.STAGING_APP_DIR }}
+        run: |
+          ssh -i ~/.ssh/staging_key "$STAGING_USER@$STAGING_HOST" "cd '$STAGING_APP_DIR' && export STAGING_IMAGE='$IMAGE' STAGING_IMAGE_TAG='$TAG' && docker compose -p job-radar-staging --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml pull api worker scheduler flower backup && docker compose -p job-radar-staging --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml run --rm migrate && docker compose -p job-radar-staging --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml up -d api worker scheduler flower backup && STAGING_URL=http://localhost:8001 ./scripts/staging-smoke.sh"

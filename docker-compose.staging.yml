@@ -1,0 +1,79 @@
+services:
+  postgres:
+    ports:
+      - "5433:5432"
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jobradar_staging}
+      POSTGRES_USER: ${POSTGRES_USER:-jobradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.staging}
+  redis:
+    ports:
+      - "6380:6379"
+  api:
+    image: ${STAGING_IMAGE:-job-radar-agent}:${STAGING_IMAGE_TAG:-staging}
+    ports:
+      - "8001:8000"
+    environment:
+      APP_ENV: staging
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.staging}@postgres:5432/${POSTGRES_DB:-jobradar_staging}
+      REDIS_URL: redis://redis:6379/0
+      AUTH_REQUIRE_TOKEN: "true"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env.staging}
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: job-radar-staging-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+  worker:
+    image: ${STAGING_IMAGE:-job-radar-agent}:${STAGING_IMAGE_TAG:-staging}
+    environment:
+      APP_ENV: staging
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.staging}@postgres:5432/${POSTGRES_DB:-jobradar_staging}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env.staging}
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: job-radar-staging-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+  scheduler:
+    image: ${STAGING_IMAGE:-job-radar-agent}:${STAGING_IMAGE_TAG:-staging}
+    environment:
+      APP_ENV: staging
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.staging}@postgres:5432/${POSTGRES_DB:-jobradar_staging}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env.staging}
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: job-radar-staging-scheduler
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+  flower:
+    image: ${STAGING_IMAGE:-job-radar-agent}:${STAGING_IMAGE_TAG:-staging}
+    ports:
+      - "5556:5555"
+  backup:
+    image: ${STAGING_IMAGE:-job-radar-agent}:${STAGING_IMAGE_TAG:-staging}
+    volumes:
+      - ./backups-staging:/backups
+  migrate:
+    image: ${STAGING_IMAGE:-job-radar-agent}:${STAGING_IMAGE_TAG:-staging}
+    command: alembic upgrade head
+    environment:
+      APP_ENV: staging
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-jobradar}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.staging}@postgres:5432/${POSTGRES_DB:-jobradar_staging}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+  prometheus:
+    ports:
+      - "9091:9090"
+  grafana:
+    ports:
+      - "3001:3000"
+  loki:
+    ports:
+      - "3101:3100"
+  tempo:
+    ports:
+      - "3201:3200"
+
+volumes:
+  staging_postgres_data:

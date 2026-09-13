@@ -3,8 +3,9 @@ SHELL := /bin/sh
 UV ?= uv
 PYTEST := $(UV) run pytest
 COMPOSE := docker compose
+STAGING_PROJECT ?= job-radar-staging
 
-.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down
+.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down staging-up staging-down staging-migrate staging-smoke
 .PHONY: migrate migration run run-api run-worker run-scheduler run-flower backup backup-verify restore run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
@@ -20,6 +21,10 @@ help:
 	  'app-logs           Follow API/worker/scheduler logs' \
 	  'observability-up   Start Prometheus, Grafana, Loki, Tempo, Alloy, and OTel Collector' \
 	  'observability-down Stop the local observability stack' \
+	  'staging-up        Start the isolated staging Compose environment' \
+	  'staging-down      Stop the staging Compose environment' \
+	  'staging-migrate   Apply migrations in staging' \
+	  'staging-smoke     Run staging readiness smoke tests' \
 	  'migrate            Apply Alembic migrations' \
 	  'migration          Create a new Alembic migration (MSG="...")' \
 	  'run                Run the FastAPI development server' \
@@ -71,6 +76,19 @@ observability-up:
 
 observability-down:
 	$(COMPOSE) stop prometheus loki tempo otel-collector alloy grafana
+
+staging-up:
+	@test -f .env.staging || (echo 'Copy .env.staging.example to .env.staging first' && exit 1)
+	$(COMPOSE) -p $(STAGING_PROJECT) --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml up -d
+
+staging-down:
+	$(COMPOSE) -p $(STAGING_PROJECT) --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml down
+
+staging-migrate:
+	$(COMPOSE) -p $(STAGING_PROJECT) --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml run --rm migrate
+
+staging-smoke:
+	STAGING_URL=$${STAGING_URL:-http://localhost:8001} ./scripts/staging-smoke.sh
 
 app-logs:
 	$(COMPOSE) logs -f api worker scheduler flower

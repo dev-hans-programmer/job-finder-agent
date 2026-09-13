@@ -17,6 +17,7 @@ from app.config import Settings, get_settings
 from app.db import RuntimeResources
 from app.observability.errors import AppError, app_error_handler
 from app.observability.logging import configure_logging, request_id_middleware
+from app.observability.rate_limit import rate_limit_middleware
 from app.observability.telemetry import configure_telemetry, instrument_app, instrument_clients
 
 
@@ -36,7 +37,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await resources.close()
 
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
+    app.state.settings = app_settings
     instrument_app(app, app_settings)
+    app.middleware("http")(rate_limit_middleware)
     app.middleware("http")(request_id_middleware)
     app.add_exception_handler(AppError, app_error_handler)
     app.include_router(health_router)

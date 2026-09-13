@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     otel_service_name: str = "job-radar-agent"
     otel_exporter_otlp_endpoint: str | None = None
     otel_sample_rate: float = Field(1.0, ge=0.0, le=1.0)
+    rate_limit_enabled: bool = True
+    rate_limit_window_seconds: int = Field(60, ge=1)
+    rate_limit_general_requests: int = Field(100, ge=1)
+    rate_limit_auth_requests: int = Field(10, ge=1)
+    rate_limit_fail_open: bool = True
+    trusted_proxy_ips: str = ""
 
 
 @lru_cache

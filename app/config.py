@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     security_headers_enabled: bool = True
     csrf_enabled: bool = False
     hsts_enabled: bool = False
+    audit_retention_days: int = Field(365, ge=1)
+    audit_archive_enabled: bool = False
+    audit_archive_dir: str = "./backups/audit"
 
     def validate_security(self) -> None:
         if self.app_env in {"staging", "production"}:

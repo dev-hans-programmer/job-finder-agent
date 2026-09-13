@@ -33,8 +33,11 @@ services:
       OTEL_ENABLED: "true"
       OTEL_SERVICE_NAME: job-radar-api
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      AUDIT_ARCHIVE_DIR: /backups/audit
     ports:
       - "8000:8000"
+    volumes:
+      - ./backups:/backups
     depends_on:
       postgres:
         condition: service_healthy

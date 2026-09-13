@@ -25,7 +25,22 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+        path = getattr(getattr(request, "url", None), "path", "")
+        if path in {"/docs", "/redoc"}:
+            # FastAPI's documentation UI is served as HTML that references
+            # Swagger/ReDoc assets hosted by their configured CDN and uses an
+            # inline bootstrap script. Keep this exception limited to docs.
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+                "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+                "img-src 'self' data: https://fastapi.tiangolo.com; "
+                "frame-ancestors 'none'"
+            )
+        else:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; frame-ancestors 'none'"
+            )
         if request.app.state.settings.hsts_enabled:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response

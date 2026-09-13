@@ -39,6 +39,16 @@ async def test_security_headers_can_add_optional_hsts_or_be_disabled():
 
 
 @pytest.mark.asyncio
+async def test_docs_security_policy_allows_fastapi_documentation_assets():
+    settings = SimpleNamespace(security_headers_enabled=True, hsts_enabled=False)
+    docs_request = request(settings)
+    docs_request.url = SimpleNamespace(path="/docs")
+    response = await security_headers_middleware(docs_request, next_response)
+    assert "https://cdn.jsdelivr.net" in response.headers["Content-Security-Policy"]
+    assert "unsafe-inline" in response.headers["Content-Security-Policy"]
+
+
+@pytest.mark.asyncio
 async def test_csrf_is_required_only_for_cookie_auth_when_enabled():
     settings = SimpleNamespace(csrf_enabled=True)
     blocked = await csrf_middleware(

@@ -53,6 +53,8 @@ Tests are organized in three top-level folders: `tests/unit/`, `tests/integratio
 018-consistent-api-responses
     ↓
 019-test-environment-isolation
+    ↓
+026-audit-log-administration
 ```
 
 Specs may be developed in parallel only where their dependency is already implemented. Each spec must leave the repository passing all existing tests.

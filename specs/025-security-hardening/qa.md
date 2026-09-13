@@ -23,6 +23,11 @@ Referrer-Policy: strict-origin-when-cross-origin
 Content-Security-Policy: default-src 'self'; frame-ancestors 'none'
 ```
 
+The `/docs` and `/redoc` pages use a narrowly scoped documentation policy that
+allows FastAPI's configured CDN assets and inline bootstrap script. This is why
+Swagger can render while normal application responses retain the stricter
+same-origin policy.
+
 `Strict-Transport-Security` must not be present locally. HTTPS certificates are
 not required for this setup.
 

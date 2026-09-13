@@ -7,7 +7,7 @@ STAGING_PROJECT ?= job-radar-staging
 TESTING_PROJECT ?= job-radar-testing
 
 .PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down staging-up staging-down staging-migrate staging-smoke test-services-up test-services-down test-migrate test-all db-clean loadtest loadtest-headless release-notes security-scan
-.PHONY: migrate migration run run-api run-worker run-scheduler run-flower backup backup-verify restore run-all test test-unit test-integration test-api coverage lint format check qa clean
+.PHONY: migrate migration run run-api run-worker run-scheduler run-flower backup backup-verify restore audit-retention run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
 	@printf '%s\n' \
@@ -41,6 +41,7 @@ help:
 	  'backup             Create a PostgreSQL backup' \
 	  'backup-verify      Verify a PostgreSQL backup' \
 	  'restore            Restore a backup into the configured database' \
+	  'audit-retention   Archive/delete audit events older than the retention policy' \
 	  'run-all            Start all application processes in Docker' \
 	  'test               Run all tests' \
 	  'test-unit          Run unit tests' \
@@ -151,6 +152,9 @@ backup-verify:
 restore:
 	@test -n "$(BACKUP)" || (echo 'Usage: make restore BACKUP=backups/file.dump' && exit 1)
 	$(COMPOSE) run --rm backup python -m app.backup.cli restore "/backups/$$(basename "$(BACKUP)")"
+
+audit-retention:
+	$(COMPOSE) run --rm api python -m app.audit_admin
 
 run-all: app-up
 

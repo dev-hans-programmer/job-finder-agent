@@ -22,6 +22,7 @@ Implemented capabilities include:
 - Password authentication, rotating refresh tokens, `/me`, and configurable RBAC
 - Separate API, worker, and scheduler processes with Celery/Redis task execution
 - Automated PostgreSQL backups with retention, verification, and restore tooling
+- Optional OpenTelemetry tracing for API, database, provider, Redis, and Celery activity
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.

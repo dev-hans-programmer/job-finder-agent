@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     backup_dir: str = "./backups"
     backup_retention_days: int = 7
     backup_interval_seconds: int = 86400
+    otel_enabled: bool = False
+    otel_service_name: str = "job-radar-agent"
+    otel_exporter_otlp_endpoint: str | None = None
+    otel_sample_rate: float = Field(1.0, ge=0.0, le=1.0)
 
 
 @lru_cache

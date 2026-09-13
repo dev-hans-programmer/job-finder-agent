@@ -3,8 +3,11 @@
 from celery import Celery
 
 from app.config import get_settings
+from app.observability.telemetry import configure_telemetry, instrument_clients
 
 settings = get_settings()
+configure_telemetry(settings)
+instrument_clients(settings)
 celery_app = Celery(
     "job_radar",
     broker=settings.redis_url,

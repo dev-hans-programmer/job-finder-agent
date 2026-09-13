@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.config import Settings
+from app.observability.telemetry import instrument_engine
 
 
 class RuntimeResources:
     def __init__(self, settings: Settings) -> None:
         self.engine: AsyncEngine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        instrument_engine(self.engine, settings)
         self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
         self.redis: Redis = Redis.from_url(settings.redis_url, decode_responses=True)
 

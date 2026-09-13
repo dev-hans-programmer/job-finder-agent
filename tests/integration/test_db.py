@@ -18,7 +18,11 @@ def resources():
         create_engine.return_value = engine
         from_url.return_value = redis
         value = RuntimeResources(
-            Settings(database_url="postgresql+asyncpg://x", redis_url="redis://x")
+            Settings(
+                database_url="postgresql+asyncpg://x",
+                redis_url="redis://x",
+                otel_enabled=False,
+            )
         )
         yield value, engine, redis
 

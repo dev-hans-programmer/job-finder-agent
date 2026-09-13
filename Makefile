@@ -6,7 +6,7 @@ COMPOSE := docker compose
 STAGING_PROJECT ?= job-radar-staging
 TESTING_PROJECT ?= job-radar-testing
 
-.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down staging-up staging-down staging-migrate staging-smoke test-services-up test-services-down test-migrate test-all db-clean
+.PHONY: help install install-hooks pre-commit services-up services-down services-logs app-up app-down app-logs observability-up observability-down staging-up staging-down staging-migrate staging-smoke test-services-up test-services-down test-migrate test-all db-clean loadtest loadtest-headless
 .PHONY: migrate migration run run-api run-worker run-scheduler run-flower backup backup-verify restore run-all test test-unit test-integration test-api coverage lint format check qa clean
 
 help:
@@ -51,7 +51,9 @@ help:
 	  'format             Format Python files with Ruff' \
 	  'check              Run format check, lint, and tests' \
 	  'qa                 Start services, migrate, then run full checks' \
-	  'clean              Remove local Python/test caches'
+	  'clean              Remove local Python/test caches' \
+	  'loadtest           Start the Locust web UI for load testing' \
+	  'loadtest-headless  Run load testing with performance thresholds'
 
 install:
 	$(UV) sync
@@ -178,6 +180,14 @@ check:
 	$(MAKE) coverage
 
 qa: services-up migrate check
+
+loadtest:
+	$(UV) run locust -f loadtest/locustfile.py --host "$${LOADTEST_TARGET_URL:-http://localhost:8000}"
+
+loadtest-headless:
+	@mkdir -p artifacts/loadtest
+	$(UV) run locust -f loadtest/locustfile.py --headless --host "$${LOADTEST_TARGET_URL:-http://localhost:8000}" --users "$${LOADTEST_USERS:-10}" --spawn-rate "$${LOADTEST_SPAWN_RATE:-2}" --run-time "$${LOADTEST_RUN_TIME:-1m}" --csv artifacts/loadtest/results --html artifacts/loadtest/report.html
+	$(UV) run python scripts/check_load_test.py artifacts/loadtest/results_stats.csv "$${LOADTEST_MAX_FAILURE_PERCENT:-0}" "$${LOADTEST_MAX_P95_MS:-1000}"
 
 clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +

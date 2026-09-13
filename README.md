@@ -26,6 +26,7 @@ Implemented capabilities include:
 - Local Prometheus, Grafana, Loki, Tempo, and OpenTelemetry Collector observability stack
 - Consistent JSON success envelopes with request correlation and pagination metadata
 - Isolated PostgreSQL/Redis testing environment with dedicated credentials
+- Locust load-testing scenarios with HTML/CSV reports and latency/error thresholds
 - Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
 
 Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.
@@ -159,6 +160,29 @@ Create the environment file:
 ```bash
 cp .env.example .env
 ```
+
+## Load testing
+
+Load tests are intended for local or staging deployments, using dedicated test
+accounts and data. Start the target deployment, then use the Locust UI with:
+
+```bash
+make loadtest
+```
+
+For a repeatable headless run that fails on aggregate thresholds:
+
+```bash
+LOADTEST_TARGET_URL=http://localhost:8000 \
+LOADTEST_USERS=10 LOADTEST_SPAWN_RATE=2 LOADTEST_RUN_TIME=1m \
+LOADTEST_MAX_FAILURE_PERCENT=0 LOADTEST_MAX_P95_MS=1000 \
+make loadtest-headless
+```
+
+Reports are written to the ignored `artifacts/loadtest/` directory. Set
+`LOADTEST_SOURCE_ID` only when you intentionally want to exercise ingestion
+triggers against a safe test source. See `specs/021-load-testing/qa.md` for
+scenario details and metrics to inspect.
 
 The local defaults are:
 

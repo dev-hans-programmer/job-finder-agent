@@ -1,0 +1,457 @@
+# Job Radar Agent
+
+Job Radar Agent is a personal job-discovery service that collects jobs from supported career-board providers, normalizes and deduplicates them, evaluates their fit against user preferences, and exposes explainable results and notification delivery state.
+
+The project is being developed spec-by-spec using Specification-Driven Development (SDD). Each spec is independently testable and contains its requirements, implementation plan, task checklist, and manual QA guide.
+
+## Current status
+
+Implemented capabilities include:
+
+- User preference profiles with versioning and validation
+- Greenhouse and Lever ingestion adapters
+- Pagination, retries, rate-limit handling, malformed-record isolation, and run counters
+- Canonical job normalization and source provenance
+- Duplicate detection and upsert behavior
+- Explainable rule-based job matching
+- Paginated, user-isolated job queries
+- Job details, match retrieval, and feedback labels
+- Telegram and email notification provider boundaries
+- Notification idempotency and delivery status persistence
+- Scheduler cadence evaluation and workflow boundaries
+- Health checks, metrics, secret redaction, deletion flow, Docker image, and CI
+
+Semantic embeddings, LLM-based reasoning, continuous scheduler deployment, and production notification retry workers are deliberately kept as extension points for future iterations.
+
+## Technology stack
+
+- Python 3.12+
+- FastAPI
+- SQLAlchemy asyncio
+- PostgreSQL 16
+- Redis 7
+- Alembic
+- Pydantic Settings
+- `uv` for dependency and environment management
+- Ruff for formatting and linting
+- Pytest with branch coverage enforcement
+- Docker Compose for local infrastructure
+
+## Architecture
+
+The application follows a layered, loosely coupled design:
+
+```text
+HTTP route
+    -> dependency provider
+    -> application/domain service
+    -> repository
+    -> PostgreSQL or Redis
+```
+
+The main processing flow is:
+
+```text
+User preferences
+        |
+        v
+Source configuration -> ingestion adapter -> normalization/deduplication
+                                                   |
+                                                   v
+                                           canonical jobs
+                                                   |
+                                                   v
+                                             rule matching
+                                                   |
+                                                   v
+                                      notification delivery state
+```
+
+Important directories:
+
+```text
+app/
+  main.py                 FastAPI application and lifespan
+  config.py               Environment-backed settings
+  api/v1/                 HTTP routes
+  dependencies/           FastAPI dependency providers
+  domain/                 Domain models and business services
+  ingestion/              Provider adapters and ingestion contracts
+  matching/               Matching and scoring implementation
+  notifications/          Notification provider boundaries/templates
+  repositories/           Database persistence operations
+  scheduler/              Cadence and scheduling boundary
+  workers/                Background workflow boundaries
+  observability/          Health, metrics, logging, and redaction
+
+tests/
+  unit/                   Fast isolated tests
+  integration/            PostgreSQL/Redis-backed tests
+  api/                    HTTP/API tests
+
+specs/                    Independent SDD specifications
+alembic/                  Database migrations
+docs/                     PRD, TRD, and operational runbooks
+```
+
+## Prerequisites
+
+Install:
+
+- Python 3.12 or newer
+- Docker and Docker Compose
+- `uv`
+
+Install `uv` if necessary:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+## Local setup
+
+Clone the repository and enter the project directory:
+
+```bash
+git clone <repository-url>
+cd job-earch-agent
+```
+
+Install dependencies:
+
+```bash
+uv sync
+```
+
+Create the environment file:
+
+```bash
+cp .env.example .env
+```
+
+The local defaults are:
+
+```env
+DATABASE_URL=postgresql+asyncpg://jobradar:jobradar@localhost:5432/jobradar
+REDIS_URL=redis://localhost:6379/0
+```
+
+Start PostgreSQL and Redis, then apply migrations:
+
+```bash
+make services-up
+make migrate
+```
+
+Start the API:
+
+```bash
+make run
+```
+
+The API is available at:
+
+- Application: <http://localhost:8000>
+- OpenAPI UI: <http://localhost:8000/docs>
+- Readiness: <http://localhost:8000/health/ready>
+- Metrics: <http://localhost:8000/metrics>
+
+## End-to-end example
+
+### 1. Save preferences
+
+Create `preferences.json`:
+
+```json
+{
+  "titles": ["Backend Engineer"],
+  "locations": {
+    "preferred": ["Mumbai", "Bangalore"]
+  },
+  "skills": {
+    "must_have": ["Python"],
+    "nice_to_have": ["PostgreSQL", "AWS"]
+  },
+  "companies": {
+    "preferred": []
+  },
+  "exclusions": ["PHP", "Frontend", "Support"],
+  "matching": {
+    "minimum_score": 40
+  }
+}
+```
+
+Submit the active profile:
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/preferences \
+  -H 'Content-Type: application/json' \
+  --data @preferences.json
+```
+
+The API uses a default development user when `X-User-ID` is not supplied. For explicit user isolation, send:
+
+```bash
+-H 'X-User-ID: 00000000-0000-0000-0000-000000000001'
+```
+
+### 2. Configure a source
+
+For a Greenhouse board:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/sources \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "kind": "greenhouse",
+    "name": "OpenAI",
+    "config": {"board": "openai"}
+  }'
+```
+
+Save the returned source `id` and start ingestion:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/sources/SOURCE_ID/run
+```
+
+The response contains a run ID. Inspect it with:
+
+```bash
+curl http://localhost:8000/api/v1/runs/RUN_ID
+```
+
+When the run succeeds, jobs are persisted in PostgreSQL.
+
+### 3. Find and match a job
+
+The job listing endpoint returns canonical jobs owned by the current user:
+
+```bash
+curl 'http://localhost:8000/api/v1/jobs?page=1&page_size=10'
+```
+
+Optional filters include:
+
+```bash
+curl 'http://localhost:8000/api/v1/jobs?min_score=40&company=OpenAI&location=Mumbai&status=active'
+```
+
+Match a job:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs/JOB_ID/match
+```
+
+Retrieve the latest match:
+
+```bash
+curl http://localhost:8000/api/v1/jobs/JOB_ID/match
+```
+
+The match response includes:
+
+- Score and confidence
+- Decision: `notify`, `review`, or `reject`
+- Component scores
+- Matched criteria
+- Missing criteria
+- Exclusion concerns
+- Explanation text
+
+### 4. Add feedback
+
+```bash
+curl -X POST http://localhost:8000/api/v1/jobs/JOB_ID/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{"label":"saved","note":"Strong backend role"}'
+```
+
+Supported labels are `saved`, `applied`, `rejected`, and `hidden`. Repeating the request for the same user/job updates the existing feedback row.
+
+### 5. Inspect delivery state
+
+```bash
+curl http://localhost:8000/api/v1/notifications/DELIVERY_ID
+```
+
+## API overview
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/health/live` | Process liveness |
+| GET | `/health/ready` | PostgreSQL and Redis readiness |
+| GET | `/metrics` | In-memory application metrics |
+| GET/PUT | `/api/v1/preferences` | Read or update active preferences |
+| POST | `/api/v1/preferences/validate` | Validate a preference payload |
+| GET/POST | `/api/v1/sources` | List or create sources |
+| POST | `/api/v1/sources/{id}/run` | Start an ingestion run |
+| GET | `/api/v1/runs/{id}` | Read run status and counters |
+| GET | `/api/v1/jobs` | Search and paginate jobs |
+| GET | `/api/v1/jobs/{id}` | Read job detail, match, and feedback |
+| POST | `/api/v1/jobs/{id}/match` | Evaluate and persist a match |
+| GET | `/api/v1/jobs/{id}/match` | Read latest match |
+| POST | `/api/v1/jobs/{id}/feedback` | Save or update feedback |
+| GET | `/api/v1/notifications/{id}` | Read delivery status |
+| DELETE | `/api/v1/users/me` | Delete the current user and owned data |
+
+## Database migrations
+
+Every database schema change must have an Alembic migration.
+
+Apply migrations:
+
+```bash
+make migrate
+```
+
+Create a migration:
+
+```bash
+make migration MSG="describe the schema change"
+```
+
+Inspect the current revision:
+
+```bash
+uv run alembic current
+```
+
+The application imports all model modules in `alembic/env.py` so metadata remains complete during migration generation and testing.
+
+## Testing and quality
+
+Run all tests:
+
+```bash
+make test
+```
+
+Run test categories independently:
+
+```bash
+make test-unit
+make test-integration
+make test-api
+```
+
+Run the enforced coverage gate:
+
+```bash
+make coverage
+```
+
+The project requires 100% branch coverage for the implemented application packages.
+
+Run formatting and linting:
+
+```bash
+make format
+make lint
+```
+
+Run the complete local quality workflow:
+
+```bash
+make qa
+```
+
+Install and run pre-commit hooks:
+
+```bash
+make install-hooks
+make pre-commit
+```
+
+The pre-commit configuration checks whitespace, file endings, JSON/YAML/TOML validity, merge conflicts, large files, Ruff formatting, Ruff linting, and the full test coverage gate.
+
+## CI
+
+GitHub Actions runs the quality workflow in `.github/workflows/ci.yml` with PostgreSQL and Redis service containers. It:
+
+1. Installs dependencies with `uv`
+2. Applies Alembic migrations
+3. Runs formatting checks
+4. Runs Ruff
+5. Runs unit, integration, and API tests
+6. Enforces 100% branch coverage
+
+CI requires these environment variables:
+
+```env
+DATABASE_URL=postgresql+asyncpg://jobradar:jobradar@localhost:5432/jobradar
+REDIS_URL=redis://localhost:6379/0
+```
+
+## Operations
+
+Operational procedures for backups, restore testing, provider outages, credential rotation, migration rollback, and deletion are documented in [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+Useful commands:
+
+```bash
+make services-logs
+make services-down
+docker compose ps
+```
+
+Create a PostgreSQL backup:
+
+```bash
+docker compose exec postgres pg_dump -U jobradar jobradar > backup.sql
+```
+
+Restore into the running disposable database:
+
+```bash
+cat backup.sql | docker compose exec -T postgres psql -U jobradar jobradar
+```
+
+## Security notes
+
+- Do not commit `.env` or provider credentials.
+- Use `.env.example` only as a configuration template.
+- Production credentials should come from a secret manager or deployment environment.
+- Logs must pass through the redaction helper before secrets are written.
+- User/job queries are scoped through source ownership.
+- Deletion is explicit and targeted to the authenticated/default user.
+
+## SDD specifications
+
+The implementation sequence is documented in `specs/`:
+
+1. `001-foundation` — application foundation and infrastructure
+2. `002-preferences` — preference profiles and validation
+3. `003-ingestion` — source ingestion and run lifecycle
+4. `004-normalization-deduplication` — canonical jobs and provenance
+5. `005-matching` — explainable matching
+6. `006-job-query-feedback` — search, detail, and feedback
+7. `007-notifications` — notification delivery state and providers
+8. `008-scheduling-workflows` — cadence and workflow boundaries
+9. `009-observability-deployment` — operations, CI, health, and deployment
+
+Each spec contains:
+
+```text
+spec.md   Requirements and acceptance criteria
+plan.md   Implementation plan
+tasks.md  Completion checklist
+qa.md     Manual end-to-end verification steps
+```
+
+## Contributing
+
+For a new feature:
+
+1. Create a new numbered spec directory.
+2. Define independently testable acceptance criteria.
+3. Add or update migrations for database changes.
+4. Keep route → service → repository boundaries intact.
+5. Add unit, integration, and API tests.
+6. Add manual QA instructions.
+7. Run `make qa` before opening a pull request.
+
+## License
+
+No license has been selected yet. Add a license before distributing the project publicly.

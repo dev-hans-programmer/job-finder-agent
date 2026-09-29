@@ -22,7 +22,8 @@ def test_validate_preferences_rejects_invalid_payload(client) -> None:
 def test_invalid_user_header_is_rejected(client) -> None:
     response = client.get("/api/v1/preferences", headers={"X-User-ID": "not-a-uuid"})
     assert response.status_code == 400
-    assert response.json()["detail"] == "X-User-ID must be a UUID"
+    assert response.json()["error"]["code"] == "INVALID_USER_ID"
+    assert response.json()["error"]["message"] == "X-User-ID must be a UUID"
 
 
 def test_create_and_get_active_preferences(client) -> None:

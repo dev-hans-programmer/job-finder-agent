@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.jobs.models import Job, JobSourceRecord
 from app.domain.jobs.normalizer import JobCandidate
+from app.errors.database import commit_session, flush_session, refresh_session
 
 
 class JobRepository:
@@ -49,7 +50,7 @@ class JobRepository:
                 application_url=candidate.application_url,
             )
             session.add(job)
-            await session.flush()
+            await flush_session(session)
         elif job.description_hash != candidate.description_hash:
             job.title = candidate.title
             job.description = candidate.description
@@ -65,6 +66,6 @@ class JobRepository:
             raw_payload_hash=hashlib.sha256(str(candidate.raw_payload).encode()).hexdigest(),
         )
         session.add(record)
-        await session.commit()
-        await session.refresh(job)
+        await commit_session(session)
+        await refresh_session(session, job)
         return job, created, changed

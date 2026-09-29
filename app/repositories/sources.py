@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.preferences.models import User
+from app.errors.database import commit_session, flush_session, refresh_session
 from app.ingestion.models import IngestionRun, Source
 
 
@@ -12,11 +13,11 @@ class SourceRepository:
     async def create(self, session: AsyncSession, user_id: uuid.UUID, data: dict) -> Source:
         if await session.get(User, user_id) is None:
             session.add(User(id=user_id))
-            await session.flush()
+            await flush_session(session)
         source = Source(user_id=user_id, **data)
         session.add(source)
-        await session.commit()
-        await session.refresh(source)
+        await commit_session(session)
+        await refresh_session(session, source)
         return source
 
     async def get(self, session: AsyncSession, source_id: uuid.UUID) -> Source | None:
@@ -32,8 +33,8 @@ class SourceRepository:
     async def create_run(self, session: AsyncSession, source_id: uuid.UUID) -> IngestionRun:
         run = IngestionRun(source_id=source_id, status="running")
         session.add(run)
-        await session.commit()
-        await session.refresh(run)
+        await commit_session(session)
+        await refresh_session(session, run)
         return run
 
     async def get_active_run(
@@ -84,8 +85,8 @@ class SourceRepository:
         run.created_count = created_count
         run.updated_count = updated_count
         run.duplicate_count = duplicate_count
-        await session.commit()
-        await session.refresh(run)
+        await commit_session(session)
+        await refresh_session(session, run)
         return run
 
     async def list_for_user(self, session: AsyncSession, user_id: uuid.UUID) -> list[Source]:

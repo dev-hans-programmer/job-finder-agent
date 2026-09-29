@@ -15,19 +15,18 @@ def test_v2_preferences_are_enveloped_and_versioned(client):
 
 
 def test_v2_preferences_missing_profile_returns_not_found(client):
-    from fastapi import HTTPException
-
     from app.api.v2.preferences import get_preferences_v2
+    from app.errors.exceptions import ActivePreferenceNotFound
 
     class EmptyService:
         async def get_active(self, session, user_id):
-            return None
+            raise ActivePreferenceNotFound()
 
     import asyncio
 
     try:
         asyncio.run(get_preferences_v2(None, None, None, EmptyService()))
-    except HTTPException as error:
-        assert error.status_code == 404
+    except ActivePreferenceNotFound:
+        pass
     else:
         raise AssertionError("expected not found")

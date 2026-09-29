@@ -1,9 +1,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings
-from app.db import RuntimeResources, check_postgres, check_redis
+from app.db import RuntimeResources, check_postgres, check_redis, session_scope
+from app.errors.exceptions import PersistenceFailure
 
 
 @pytest.fixture
@@ -66,8 +68,26 @@ async def test_session_scope(resources):
     session = AsyncMock()
     value.session_factory = MagicMock(return_value=session)
     session.__aenter__.return_value = session
-    from app.db import session_scope
-
     async with session_scope(value) as current:
         assert current is session
     session.__aexit__.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_session_scope_translates_sqlalchemy_errors(resources):
+    value, _, _ = resources
+    session = AsyncMock()
+
+    class SessionContext:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *_):
+            return False
+
+    value.session_factory = MagicMock(return_value=SessionContext())
+    with pytest.raises(PersistenceFailure):
+        async with session_scope(value) as current:
+            assert current is session
+            raise SQLAlchemyError("query failed")
+    session.rollback.assert_awaited_once()

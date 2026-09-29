@@ -1,12 +1,21 @@
 import uuid
 
-from fastapi import Depends, HTTPException, Request
+import jwt
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth.security import decode_access_token
 from app.config import get_settings
 from app.dependencies.database import get_session
 from app.domain.preferences.models import User
+from app.errors.database import commit_session
+from app.errors.exceptions import (
+    AuthenticationRequired,
+    InvalidAccessToken,
+    InvalidUserIdentifier,
+    PermissionDenied,
+    SessionRevoked,
+)
 from app.repositories.auth import AuthRepository
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -36,32 +45,32 @@ async def get_current_user(
                 status="active",
             )
             session.add(user)
-            await session.commit()
+            await commit_session(session)
         return user
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="authentication required")
+        raise AuthenticationRequired()
     try:
         claims = decode_access_token(
             authorization[7:], settings.jwt_secret_key, settings.jwt_issuer
         )
-        user = await session.get(User, uuid.UUID(claims["sub"]))
-        if getattr(settings, "auth_session_management_enabled", False):
-            session_id = claims.get("sid")
-            auth_session = (
-                await AuthRepository().auth_session(
-                    session, uuid.UUID(session_id), uuid.UUID(claims["sub"])
-                )
-                if session_id
-                else None
-            )
-            if auth_session is None or auth_session.revoked_at is not None:
-                raise HTTPException(status_code=401, detail="session is revoked")
-            if request is not None:
-                request.state.session_id = auth_session.id
-    except Exception as error:
-        raise HTTPException(status_code=401, detail="invalid authentication token") from error
+        user_id = uuid.UUID(claims["sub"])
+        session_id = uuid.UUID(claims["sid"]) if claims.get("sid") else None
+    except (jwt.InvalidTokenError, KeyError, TypeError, ValueError) as error:
+        raise InvalidAccessToken() from error
+
+    user = await session.get(User, user_id)
+    if getattr(settings, "auth_session_management_enabled", False):
+        auth_session = (
+            await AuthRepository().auth_session(session, session_id, user_id)
+            if session_id is not None
+            else None
+        )
+        if auth_session is None or auth_session.revoked_at is not None:
+            raise SessionRevoked()
+        if request is not None:
+            request.state.session_id = auth_session.id
     if user is None or user.status != "active":
-        raise HTTPException(status_code=401, detail="invalid authentication token")
+        raise InvalidAccessToken()
     return user
 
 
@@ -76,14 +85,14 @@ async def user_id_from_current_user(
         try:
             return uuid.UUID(legacy_id)
         except ValueError as error:
-            raise HTTPException(status_code=400, detail="X-User-ID must be a UUID") from error
+            raise InvalidUserIdentifier() from error
     return user.id
 
 
 def require_role(role: str):
     async def dependency(user=Depends(get_current_user), session=Depends(get_session)):
         if role not in await AuthRepository().roles(session, user.id):
-            raise HTTPException(status_code=403, detail="insufficient role")
+            raise PermissionDenied()
         return user
 
     return dependency

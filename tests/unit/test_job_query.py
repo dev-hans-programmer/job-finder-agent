@@ -7,6 +7,7 @@ from app.api.v1.jobs import _match_payload, get_job, get_match, list_jobs, save_
 from app.dependencies.job_query import get_job_query_service
 from app.domain.jobs.query_schemas import FeedbackInput
 from app.domain.jobs.query_service import JobQueryService
+from app.errors.exceptions import JobNotFound, MatchNotFound
 
 
 class FakeJobs:
@@ -115,22 +116,29 @@ async def test_query_service_and_routes_cover_success_paths():
 async def test_query_service_not_found_paths():
     service = JobQueryService(FakeJobs(), FakeMatches())
     user_id = uuid.uuid4()
-    assert await service.detail(None, user_id, uuid.uuid4()) is None
-    assert (
-        await service.feedback(None, user_id, uuid.uuid4(), FeedbackInput(label="hidden")) is None
-    )
+    with pytest.raises(JobNotFound):
+        await service.detail(None, user_id, uuid.uuid4())
+    with pytest.raises(JobNotFound):
+        await service.feedback(None, user_id, uuid.uuid4(), FeedbackInput(label="hidden"))
+
+    class NoMatches:
+        async def latest(self, *args):
+            return None
+
+    job = make_job()
+    service = JobQueryService(FakeJobs(job), NoMatches())
+    with pytest.raises(MatchNotFound):
+        await service.latest_match(None, user_id, job.id)
 
 
 @pytest.mark.asyncio
 async def test_query_routes_raise_not_found():
-    from fastapi import HTTPException
-
     service = JobQueryService(FakeJobs(), FakeMatches())
-    with pytest.raises(HTTPException):
+    with pytest.raises(JobNotFound):
         await get_job(uuid.uuid4(), None, uuid.uuid4(), None, service)
-    with pytest.raises(HTTPException):
+    with pytest.raises(MatchNotFound):
         await get_match(uuid.uuid4(), None, uuid.uuid4(), None, service)
-    with pytest.raises(HTTPException):
+    with pytest.raises(JobNotFound):
         await save_feedback(
             uuid.uuid4(), FeedbackInput(label="saved"), None, uuid.uuid4(), None, service
         )

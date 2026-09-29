@@ -2,6 +2,7 @@ import uuid
 from types import SimpleNamespace
 
 from app.dependencies.sources import get_ingestion_service
+from app.errors.exceptions import UnsupportedSourceKind
 
 
 def test_create_source(client):
@@ -34,7 +35,7 @@ def test_list_sources(client):
 def test_run_unsupported_source_returns_validation_error(client):
     class UnsupportedService:
         async def start_run(self, session, source_id, user_id):
-            raise ValueError("unsupported source kind")
+            raise UnsupportedSourceKind()
 
     client.app.dependency_overrides[get_ingestion_service] = lambda: UnsupportedService()
     try:

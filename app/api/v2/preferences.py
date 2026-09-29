@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.responses import SuccessResponse, success_response
@@ -21,8 +21,6 @@ async def get_preferences_v2(
     service: V2PreferenceService = Depends(get_v2_preference_service),
 ):
     response = await service.get_active(session, user_id)
-    if response is None:
-        raise HTTPException(status_code=404, detail="No active preference profile")
     return success_response(response, request, api_version="v2")
 
 

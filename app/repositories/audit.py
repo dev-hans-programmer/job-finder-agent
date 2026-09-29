@@ -3,13 +3,14 @@ from datetime import datetime
 from sqlalchemy import delete, func, select
 
 from app.domain.preferences.models import AuditEvent
+from app.errors.database import commit_session, refresh_session
 
 
 class AuditRepository:
     async def create(self, session, event):
         session.add(event)
-        await session.commit()
-        await session.refresh(event)
+        await commit_session(session)
+        await refresh_session(session, event)
         return event
 
     def _query(
@@ -61,5 +62,5 @@ class AuditRepository:
 
     async def delete_before(self, session, cutoff: datetime):
         result = await session.execute(delete(AuditEvent).where(AuditEvent.created_at < cutoff))
-        await session.commit()
+        await commit_session(session)
         return result.rowcount or 0

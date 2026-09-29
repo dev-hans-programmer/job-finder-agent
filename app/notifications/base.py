@@ -15,7 +15,8 @@ class NotificationProvider(Protocol):
 def is_retryable(error: Exception) -> bool:
     code = getattr(error, "status_code", None)
     return (
-        isinstance(error, (TimeoutError, ConnectionError))
+        getattr(error, "retryable", False)
+        or isinstance(error, (TimeoutError, ConnectionError))
         or code == 429
         or (code is not None and code >= 500)
     )

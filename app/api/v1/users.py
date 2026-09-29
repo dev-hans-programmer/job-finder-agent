@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies.auth import user_id_from_current_user
@@ -15,5 +15,4 @@ async def delete_me(
     session: AsyncSession = Depends(get_session),
     service: DeletionService = Depends(get_deletion_service),
 ) -> None:
-    if not await service.delete_user(session, user_id):
-        raise HTTPException(status_code=404, detail="user not found")
+    await service.delete_user(session, user_id)

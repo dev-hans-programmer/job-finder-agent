@@ -6,8 +6,9 @@ import uuid
 from opentelemetry import trace
 
 from app.config import get_settings
-from app.db import RuntimeResources
+from app.db import RuntimeResources, session_scope
 from app.dependencies.sources import build_ingestion_service
+from app.errors.exceptions import DatabaseUnavailable
 from app.workers.celery_app import celery_app
 from app.workers.ingestion import execute_ingestion_run
 
@@ -17,7 +18,7 @@ tracer = trace.get_tracer("job-radar.ingestion")
 @celery_app.task(
     bind=True,
     name="job_radar.ingestion",
-    autoretry_for=(TimeoutError, ConnectionError),
+    autoretry_for=(TimeoutError, ConnectionError, DatabaseUnavailable),
     retry_backoff=True,
     retry_jitter=True,
     max_retries=3,
@@ -33,7 +34,7 @@ async def _run_ingestion(source_id: str, run_id: str) -> dict:
         span.set_attribute("job.run_id", run_id)
         resources = RuntimeResources(get_settings())
         try:
-            async with resources.session_factory() as session:
+            async with session_scope(resources) as session:
                 service = build_ingestion_service(resources.redis)
                 source = await service.repository.get(session, uuid.UUID(source_id))
                 if source is None:

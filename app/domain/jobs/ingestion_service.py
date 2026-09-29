@@ -5,6 +5,12 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.jobs.normalizer import normalize_record
+from app.errors.exceptions import (
+    IngestionAlreadyRunning,
+    RunNotFound,
+    SourceNotFound,
+    UnsupportedSourceKind,
+)
 from app.ingestion.base import AdapterError, SourceAdapter, with_retries
 from app.ingestion.models import IngestionRun
 from app.repositories.jobs import JobRepository
@@ -32,9 +38,9 @@ class IngestionService:
             else await self.repository.get(session, source_id)
         )
         if source is None:
-            raise LookupError("source not found")
+            raise SourceNotFound()
         if source.kind not in self.adapters:
-            raise ValueError(f"unsupported source kind: {source.kind}")
+            raise UnsupportedSourceKind()
         active = await self.repository.get_active_run(session, source_id)
         if active is not None:
             setattr(active, "already_running", True)
@@ -42,8 +48,14 @@ class IngestionService:
         if self.redis is not None:
             lock = await self.redis.set(f"ingestion:source:{source_id}", "1", nx=True, ex=900)
             if not lock:
-                raise RuntimeError("source ingestion is already running")
+                raise IngestionAlreadyRunning()
         return await self.repository.create_run(session, source_id)
+
+    async def get_run_for_user(self, session, run_id: uuid.UUID, user_id: uuid.UUID):
+        run = await self.repository.get_run_for_user(session, run_id, user_id)
+        if run is None:
+            raise RunNotFound()
+        return run
 
     async def execute_run(
         self,

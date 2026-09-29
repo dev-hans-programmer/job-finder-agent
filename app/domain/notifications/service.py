@@ -2,6 +2,8 @@ import uuid
 
 from app.domain.jobs.models import Job
 from app.domain.matching.models import MatchResult
+from app.errors.database import commit_session, refresh_session
+from app.errors.exceptions import NotificationDeliveryNotFound
 from app.notifications.base import NotificationMessage, is_retryable
 from app.notifications.templates import render_match
 from app.repositories.notifications import NotificationRepository
@@ -12,7 +14,10 @@ class NotificationService:
         self.repository = repository or NotificationRepository()
 
     async def get_for_user(self, session, delivery_id, user_id):
-        return await self.repository.get_for_user(session, delivery_id, user_id)
+        delivery = await self.repository.get_for_user(session, delivery_id, user_id)
+        if delivery is None:
+            raise NotificationDeliveryNotFound()
+        return delivery
 
     async def deliver(
         self,
@@ -39,6 +44,6 @@ class NotificationService:
         except Exception as error:
             delivery.status = "retryable" if is_retryable(error) else "failed"
             delivery.error = str(error)
-        await session.commit()
-        await session.refresh(delivery)
+        await commit_session(session)
+        await refresh_session(session, delivery)
         return delivery

@@ -3,7 +3,7 @@
 import asyncio
 
 from app.config import get_settings
-from app.db import RuntimeResources
+from app.db import RuntimeResources, session_scope
 from app.domain.audit.service import AuditService
 from app.repositories.audit import AuditRepository
 
@@ -12,7 +12,7 @@ async def apply_retention():
     settings = get_settings()
     resources = RuntimeResources(settings)
     try:
-        async with resources.session_factory() as session:
+        async with session_scope(resources) as session:
             return await AuditService(AuditRepository()).apply_retention(
                 session,
                 retention_days=settings.audit_retention_days,

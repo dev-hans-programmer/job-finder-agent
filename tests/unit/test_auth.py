@@ -12,6 +12,20 @@ from app.auth.security import (
     verify_password,
 )
 from app.domain.auth.service import AuthService
+from app.errors.exceptions import (
+    AccountLocked,
+    CurrentSessionUnavailable,
+    EmailVerificationRequired,
+    FeatureNotAvailable,
+    InvalidAccessToken,
+    InvalidCredentials,
+    InvalidRefreshToken,
+    InvalidVerificationCode,
+    SessionManagementDisabled,
+    SessionNotFound,
+    UserAlreadyExists,
+    UserOrRoleNotFound,
+)
 from app.repositories.auth import AuthRepository
 
 
@@ -99,11 +113,11 @@ async def test_auth_service_security_and_refresh_branches():
     await AuthService(Repo(user=user, role=SimpleNamespace(id=uuid.uuid4())), SETTINGS).assign_role(
         Session(), user.id, "user"
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(UserOrRoleNotFound):
         await AuthService(Repo(user=None, role=None), SETTINGS).assign_role(
             Session(), user.id, "missing"
         )
-    with pytest.raises(ValueError):
+    with pytest.raises(UserAlreadyExists):
         await AuthService(Repo(user=user), SETTINGS).register(
             Session(), "a@example.com", "long password"
         )
@@ -116,13 +130,13 @@ async def test_auth_service_security_and_refresh_branches():
         SimpleNamespace(password_hash=hash_password("different"), status="active"),
         SimpleNamespace(password_hash=user.password_hash, status="disabled"),
     ]:
-        with pytest.raises(ValueError):
+        with pytest.raises(InvalidCredentials):
             await AuthService(Repo(user=candidate), SETTINGS).authenticate(
                 Session(), "a@example.com", "long password"
             )
     access, refresh = await service.issue_tokens(Session(), user)
     assert await service.claims(access)
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidAccessToken):
         await service.claims("bad")
     token = SimpleNamespace(
         revoked_at=None,
@@ -148,7 +162,7 @@ async def test_auth_service_security_and_refresh_branches():
             user_id=user.id,
         ),
     ]:
-        with pytest.raises(ValueError):
+        with pytest.raises(InvalidRefreshToken):
             await AuthService(Repo(user=user, token=bad), SETTINGS).refresh(Session(), refresh)
     dead = SimpleNamespace(
         revoked_at=None,
@@ -156,7 +170,7 @@ async def test_auth_service_security_and_refresh_branches():
         family_id=uuid.uuid4(),
         user_id=user.id,
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidRefreshToken):
         await AuthService(
             Repo(user=SimpleNamespace(status="disabled"), token=dead), SETTINGS
         ).refresh(Session(), refresh)
@@ -260,15 +274,17 @@ async def test_auth_sessions_repository_and_service_paths():
     assert await service.list_sessions(Session(), user_id) == sessions
     await service.revoke_session(Session(), user_id, current_id)
     assert await service.revoke_other_sessions(Session(), user_id, current_id) == 1
+    with pytest.raises(CurrentSessionUnavailable):
+        await service.revoke_other_sessions(Session(), user_id, None)
     session_repo.revoke_auth_session.return_value = False
-    with pytest.raises(ValueError):
+    with pytest.raises(SessionNotFound):
         await service.revoke_session(Session(), user_id, current_id)
 
     disabled = AuthService(Repo(), SimpleNamespace(auth_session_management_enabled=False))
     assert await disabled.list_sessions(Session(), user_id) == []
-    with pytest.raises(ValueError):
+    with pytest.raises(SessionManagementDisabled):
         await disabled.revoke_session(Session(), user_id, current_id)
-    with pytest.raises(ValueError):
+    with pytest.raises(SessionManagementDisabled):
         await disabled.revoke_other_sessions(Session(), user_id, current_id)
 
 
@@ -323,17 +339,26 @@ async def test_account_security_service_paths():
     await service.reset_password(Session(), user.email, "123456", "new password 123")
     assert repository.revoke_user_tokens.await_count == 1
     record.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidVerificationCode):
         await service.verify_email(Session(), user.email, "123456")
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidVerificationCode):
         await service.reset_password(Session(), user.email, "123456", "new password 123")
+
+    disabled_features = AuthService(
+        repository,
+        SimpleNamespace(auth_email_verification_enabled=False, auth_password_reset_enabled=False),
+    )
+    with pytest.raises(FeatureNotAvailable):
+        await disabled_features.verify_email(Session(), user.email, "123456")
+    with pytest.raises(FeatureNotAvailable):
+        await disabled_features.reset_password(Session(), user.email, "123456", "new password 123")
 
     user.failed_login_attempts = 0
     user.locked_until = None
     for _ in range(2):
-        with pytest.raises(ValueError):
+        with pytest.raises(InvalidCredentials):
             await service.authenticate(Session(), user.email, "wrong password")
-    with pytest.raises(ValueError, match="locked"):
+    with pytest.raises(AccountLocked):
         await service.authenticate(Session(), user.email, "new password 123")
     user.locked_until = None
     user.failed_login_attempts = 1
@@ -341,5 +366,5 @@ async def test_account_security_service_paths():
 
     settings.auth_email_verification_enabled = True
     user.email_verified_at = None
-    with pytest.raises(ValueError, match="verification"):
+    with pytest.raises(EmailVerificationRequired):
         await service.authenticate(Session(), user.email, "new password 123")

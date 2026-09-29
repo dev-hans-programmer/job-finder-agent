@@ -6,9 +6,14 @@ import logging
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.db import RuntimeResources
+from app.db import RuntimeResources, session_scope
 from app.dependencies.sources import build_ingestion_service
 from app.domain.jobs.ingestion_service import IngestionService
+from app.errors.exceptions import (
+    IngestionAlreadyRunning,
+    SourceNotFound,
+    UnsupportedSourceKind,
+)
 from app.ingestion.models import Source
 from app.workers.tasks.ingestion import run_ingestion
 
@@ -16,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 async def schedule_due_sources(resources: RuntimeResources) -> int:
-    async with resources.session_factory() as session:
+    async with session_scope(resources) as session:
         result = await session.execute(select(Source).where(Source.enabled.is_(True)))
         sources = list(result.scalars().all())
         service: IngestionService = build_ingestion_service(resources.redis)
@@ -26,7 +31,7 @@ async def schedule_due_sources(resources: RuntimeResources) -> int:
                 continue
             try:
                 run = await service.start_run(session, source.id, source.user_id)
-            except (LookupError, ValueError, RuntimeError):
+            except (IngestionAlreadyRunning, SourceNotFound, UnsupportedSourceKind):
                 continue
             if not getattr(run, "already_running", False):
                 run_ingestion.delay(str(source.id), str(run.id))

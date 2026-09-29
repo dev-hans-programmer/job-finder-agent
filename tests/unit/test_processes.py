@@ -6,6 +6,7 @@ import pytest
 
 import app.processes.api
 import app.processes.worker
+from app.errors.exceptions import IngestionAlreadyRunning
 from app.processes.scheduler import schedule_due_sources
 from app.workers.celery_app import celery_app
 from app.workers.tasks.ingestion import _run_ingestion, run_ingestion
@@ -72,7 +73,7 @@ async def test_scheduler_skips_start_errors_and_running_runs():
     resources = MagicMock()
     resources.session_factory.return_value = SessionContext(session)
     service = MagicMock()
-    service.start_run = AsyncMock(side_effect=RuntimeError("locked"))
+    service.start_run = AsyncMock(side_effect=IngestionAlreadyRunning())
     with patch("app.processes.scheduler.build_ingestion_service", return_value=service):
         assert await schedule_due_sources(resources) == 0
     service.start_run.side_effect = None

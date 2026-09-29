@@ -11,6 +11,7 @@ from app.domain.preferences.models import (
     UserRole,
     VerificationCode,
 )
+from app.errors.database import commit_session, flush_session, refresh_session
 
 
 class AuthRepository:
@@ -34,8 +35,8 @@ class AuthRepository:
     async def create_role(self, session, name: str, description: str | None):
         role = Role(name=name, description=description)
         session.add(role)
-        await session.commit()
-        await session.refresh(role)
+        await commit_session(session)
+        await refresh_session(session, role)
         return role
 
     async def assign_role(self, session, user_id: uuid.UUID, role_id: uuid.UUID):
@@ -44,7 +45,7 @@ class AuthRepository:
         )
         if existing is None:
             session.add(UserRole(user_id=user_id, role_id=role_id))
-            await session.commit()
+            await commit_session(session)
 
     async def revoke_tokens(self, session, family_id: uuid.UUID, now: datetime):
         await session.execute(
@@ -60,11 +61,11 @@ class AuthRepository:
 
     async def save_refresh_token(self, session, token: RefreshToken):
         session.add(token)
-        await session.commit()
+        await commit_session(session)
 
     async def save_auth_session(self, session, auth_session: AuthSession):
         session.add(auth_session)
-        await session.flush()
+        await flush_session(session)
 
     async def auth_session(self, session, session_id: uuid.UUID, user_id: uuid.UUID):
         return await session.scalar(
@@ -89,7 +90,7 @@ class AuthRepository:
             .where(RefreshToken.session_id == session_id, RefreshToken.revoked_at.is_(None))
             .values(revoked_at=now)
         )
-        await session.commit()
+        await commit_session(session)
         return True
 
     async def revoke_other_auth_sessions(
@@ -111,7 +112,7 @@ class AuthRepository:
                 )
                 .values(revoked_at=now)
             )
-            await session.commit()
+            await commit_session(session)
         return count
 
     async def verification_code(self, session, user_id, purpose: str, code_hash: str):
@@ -126,7 +127,7 @@ class AuthRepository:
 
     async def save_verification_code(self, session, code: VerificationCode):
         session.add(code)
-        await session.commit()
+        await commit_session(session)
 
     async def revoke_user_tokens(self, session, user_id: uuid.UUID, now):
         await session.execute(
@@ -139,4 +140,4 @@ class AuthRepository:
             .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
             .values(revoked_at=now)
         )
-        await session.commit()
+        await commit_session(session)

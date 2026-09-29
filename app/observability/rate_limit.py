@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
 
 from app.config import Settings
+from app.errors.responses import build_error_payload
 
 
 @dataclass(frozen=True)
@@ -79,14 +80,11 @@ def _is_exempt(path: str) -> bool:
 
 
 def _error_content(request: Request, code: str, message: str) -> dict:
-    return {
-        "error": {
-            "code": code,
-            "message": message,
-            "details": [],
-            "request_id": getattr(request.state, "request_id", "unknown"),
-        }
-    }
+    return build_error_payload(
+        code,
+        message,
+        getattr(getattr(request, "state", None), "request_id", "unknown"),
+    )
 
 
 def _headers(result: RateLimitResult) -> dict[str, str]:

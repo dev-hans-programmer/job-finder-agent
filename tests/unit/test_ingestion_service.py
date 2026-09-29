@@ -4,6 +4,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.domain.jobs.ingestion_service import IngestionService
+from app.errors.exceptions import (
+    IngestionAlreadyRunning,
+    SourceNotFound,
+    UnsupportedSourceKind,
+)
 from app.ingestion.base import AdapterError, RawJobRecord, with_retries
 from app.ingestion.models import IngestionRun, Source
 
@@ -28,12 +33,12 @@ async def test_ingestion_service_rejects_missing_or_unsupported_source():
     service = IngestionService(repository, {})
     repository.get.return_value = None
     repository.get_active_run.return_value = None
-    with pytest.raises(LookupError):
+    with pytest.raises(SourceNotFound):
         await service.start_run(AsyncMock(), uuid.uuid4())
     repository.get.return_value = Source(
         id=uuid.uuid4(), kind="unknown", name="Demo", config={}, user_id=uuid.uuid4()
     )
-    with pytest.raises(ValueError, match="unsupported"):
+    with pytest.raises(UnsupportedSourceKind):
         await service.start_run(AsyncMock(), uuid.uuid4())
 
 
@@ -136,7 +141,7 @@ async def test_ingestion_source_lock():
     await service.execute_run(AsyncMock(), run.id, {}, "greenhouse", source.id, "Demo")
     redis.delete.assert_awaited_once()
     redis.set.return_value = False
-    with pytest.raises(RuntimeError, match="already running"):
+    with pytest.raises(IngestionAlreadyRunning, match="already in progress"):
         await service.start_run(AsyncMock(), source.id)
 
 

@@ -29,6 +29,7 @@ from app.auth.schemas import (
 from app.auth.security import create_access_token
 from app.dependencies.audit import get_audit_service
 from app.dependencies.auth import get_current_user, require_role
+from app.errors.exceptions import FeatureNotAvailable, InvalidVerificationCode
 
 
 def test_register_login_me_refresh_and_logout(client):
@@ -311,6 +312,7 @@ async def test_account_security_routes_feature_flags():
         PasswordResetRequest(email="security@example.com"), request, None, service
     )
     with pytest.raises(Exception):
+        service.reset_password.side_effect = FeatureNotAvailable()
         await confirm_password_reset(
             PasswordResetConfirm(
                 email="security@example.com", code="123456", password="NewPassword123!"
@@ -319,11 +321,12 @@ async def test_account_security_routes_feature_flags():
             service,
         )
     with pytest.raises(Exception):
+        service.verify_email.side_effect = FeatureNotAvailable()
         await verify_email(
             EmailVerificationInput(email="security@example.com", code="123456"), None, service
         )
     settings.auth_password_reset_enabled = True
-    service.reset_password.side_effect = ValueError("expired")
+    service.reset_password.side_effect = InvalidVerificationCode()
     with pytest.raises(Exception):
         await confirm_password_reset(
             PasswordResetConfirm(
@@ -333,7 +336,7 @@ async def test_account_security_routes_feature_flags():
             service,
         )
     settings.auth_email_verification_enabled = True
-    service.verify_email.side_effect = ValueError("expired")
+    service.verify_email.side_effect = InvalidVerificationCode()
     with pytest.raises(Exception):
         await verify_email(
             EmailVerificationInput(email="security@example.com", code="123456"), None, service

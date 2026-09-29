@@ -13,6 +13,22 @@ from app.auth.security import (
     verify_password,
 )
 from app.domain.preferences.models import AuthSession, RefreshToken, User, VerificationCode
+from app.errors.database import commit_session, flush_session
+from app.errors.exceptions import (
+    AccountLocked,
+    CurrentSessionUnavailable,
+    EmailVerificationRequired,
+    FeatureNotAvailable,
+    InvalidAccessToken,
+    InvalidCredentials,
+    InvalidRefreshToken,
+    InvalidVerificationCode,
+    RefreshTokenReplay,
+    SessionManagementDisabled,
+    SessionNotFound,
+    UserAlreadyExists,
+    UserOrRoleNotFound,
+)
 from app.repositories.auth import AuthRepository
 
 
@@ -27,7 +43,7 @@ class AuthService:
     async def register(self, session, email: str, password: str):
         email = email.lower()
         if await self.repository.user_by_email(session, email):
-            raise ValueError("email is already registered")
+            raise UserAlreadyExists()
         verification_enabled = getattr(self.settings, "auth_email_verification_enabled", False)
         user = User(
             email=email,
@@ -35,7 +51,7 @@ class AuthService:
             status="pending_verification" if verification_enabled else "active",
         )
         session.add(user)
-        await session.flush()
+        await flush_session(session)
         role = await self.repository.role(session, self.settings.default_user_role)
         if role is None:
             role = await self.repository.create_role(
@@ -61,7 +77,7 @@ class AuthService:
             and user.locked_until
             and user.locked_until > now
         ):
-            raise ValueError("account is temporarily locked")
+            raise AccountLocked()
         verification_enabled = getattr(self.settings, "auth_email_verification_enabled", False)
         if (
             user is None
@@ -76,14 +92,14 @@ class AuthService:
                 user.failed_login_attempts += 1
                 if user.failed_login_attempts >= self.settings.auth_max_login_attempts:
                     user.locked_until = now + timedelta(minutes=self.settings.auth_lockout_minutes)
-                await session.commit()
-            raise ValueError("invalid credentials")
+                await commit_session(session)
+            raise InvalidCredentials()
         if verification_enabled and not user.email_verified_at:
-            raise ValueError("email verification required")
+            raise EmailVerificationRequired()
         if self.lockout_enabled:
             user.failed_login_attempts = 0
             user.locked_until = None
-            await session.commit()
+            await commit_session(session)
         return user
 
     async def issue_tokens(self, session, user, session_id=None, session_metadata=None):
@@ -123,17 +139,18 @@ class AuthService:
         token = await self.repository.refresh_token(session, hash_refresh_token(raw_token))
         now = datetime.now(timezone.utc)
         if token is None or token.revoked_at is not None or token.expires_at <= now:
+            replayed = token is not None and token.revoked_at is not None
             if token is not None:
                 await self.repository.revoke_tokens(session, token.family_id, now)
-                await session.commit()
-            if token is not None and token.revoked_at is not None:
-                raise ValueError("refresh token replay detected")
-            raise ValueError("invalid refresh token")
+                await commit_session(session)
+            if replayed:
+                raise RefreshTokenReplay()
+            raise InvalidRefreshToken()
         await self.repository.revoke_tokens(session, token.family_id, now)
-        await session.commit()
+        await commit_session(session)
         user = await self.repository.user(session, token.user_id)
         if user is None or user.status != "active":
-            raise ValueError("invalid refresh token")
+            raise InvalidRefreshToken()
         return await self.issue_tokens(session, user, session_id=getattr(token, "session_id", None))
 
     async def list_sessions(self, session, user_id):
@@ -143,15 +160,17 @@ class AuthService:
 
     async def revoke_session(self, session, user_id, session_id):
         if not getattr(self.settings, "auth_session_management_enabled", False):
-            raise ValueError("session management is disabled")
+            raise SessionManagementDisabled()
         if not await self.repository.revoke_auth_session(
             session, session_id, user_id, datetime.now(timezone.utc)
         ):
-            raise ValueError("session not found")
+            raise SessionNotFound()
 
     async def revoke_other_sessions(self, session, user_id, current_session_id):
+        if current_session_id is None:
+            raise CurrentSessionUnavailable()
         if not getattr(self.settings, "auth_session_management_enabled", False):
-            raise ValueError("session management is disabled")
+            raise SessionManagementDisabled()
         return await self.repository.revoke_other_auth_sessions(
             session, user_id, current_session_id, datetime.now(timezone.utc)
         )
@@ -175,6 +194,8 @@ class AuthService:
         return code
 
     async def verify_email(self, session, email: str, code: str):
+        if not getattr(self.settings, "auth_email_verification_enabled", False):
+            raise FeatureNotAvailable()
         user = await self.repository.user_by_email(session, email.lower())
         record = (
             None
@@ -184,13 +205,15 @@ class AuthService:
             )
         )
         if user is None or record is None or record.expires_at <= datetime.now(timezone.utc):
-            raise ValueError("invalid or expired verification code")
+            raise InvalidVerificationCode()
         record.consumed_at = datetime.now(timezone.utc)
         user.email_verified_at = datetime.now(timezone.utc)
         user.status = "active"
-        await session.commit()
+        await commit_session(session)
 
     async def reset_password(self, session, email: str, code: str, password: str):
+        if not getattr(self.settings, "auth_password_reset_enabled", False):
+            raise FeatureNotAvailable()
         user = await self.repository.user_by_email(session, email.lower())
         record = (
             None
@@ -200,7 +223,7 @@ class AuthService:
             )
         )
         if user is None or record is None or record.expires_at <= datetime.now(timezone.utc):
-            raise ValueError("invalid or expired reset code")
+            raise InvalidVerificationCode()
         record.consumed_at = datetime.now(timezone.utc)
         user.password_hash = hash_password(password)
         await self.repository.revoke_user_tokens(session, user.id, datetime.now(timezone.utc))
@@ -211,7 +234,7 @@ class AuthService:
                 token, self.settings.jwt_secret_key, self.settings.jwt_issuer
             )
         except (jwt.InvalidTokenError, ValueError) as error:
-            raise ValueError("invalid access token") from error
+            raise InvalidAccessToken() from error
 
     async def roles_for_user(self, session, user_id):
         return await self.repository.roles(session, user_id)
@@ -223,5 +246,5 @@ class AuthService:
         target = await self.repository.user(session, user_id)
         role = await self.repository.role(session, role_name)
         if target is None or role is None:
-            raise ValueError("user or role not found")
+            raise UserOrRoleNotFound()
         await self.repository.assign_role(session, user_id, role.id)

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.jobs.feedback import JobFeedback
 from app.domain.jobs.models import Job, JobSourceRecord
 from app.domain.matching.models import MatchResult
+from app.errors.database import commit_session, refresh_session
 from app.ingestion.models import Source
 
 
@@ -65,6 +66,6 @@ class JobQueryRepository:
 
     async def save_feedback(self, session: AsyncSession, feedback: JobFeedback) -> JobFeedback:
         session.add(feedback)
-        await session.commit()
-        await session.refresh(feedback)
+        await commit_session(session)
+        await refresh_session(session, feedback)
         return feedback

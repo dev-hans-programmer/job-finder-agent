@@ -1,6 +1,8 @@
 from fastapi import Request, Response
 from starlette.responses import JSONResponse
 
+from app.errors.responses import build_error_payload
+
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
@@ -14,7 +16,14 @@ async def csrf_middleware(request: Request, call_next):
         and (request.cookies.get("access_token") or request.cookies.get("refresh_token"))
         and (not csrf_cookie or csrf_header != csrf_cookie)
     ):
-        return JSONResponse({"detail": "CSRF validation failed"}, status_code=403)
+        return JSONResponse(
+            build_error_payload(
+                "CSRF_VALIDATION_FAILED",
+                "CSRF validation failed",
+                getattr(getattr(request, "state", None), "request_id", "unknown"),
+            ),
+            status_code=403,
+        )
     return await call_next(request)
 
 

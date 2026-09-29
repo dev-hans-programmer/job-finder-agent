@@ -6,13 +6,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.preferences.models import PreferenceProfile, User
+from app.errors.database import commit_session, flush_session, refresh_session
 
 
 class PreferenceRepository:
     async def ensure_user(self, session: AsyncSession, user_id: uuid.UUID) -> None:
         if await session.get(User, user_id) is None:
             session.add(User(id=user_id))
-            await session.flush()
+            await flush_session(session)
 
     async def get_active(
         self, session: AsyncSession, user_id: uuid.UUID
@@ -62,6 +63,6 @@ class PreferenceRepository:
             is_active=True,
         )
         session.add(profile)
-        await session.commit()
-        await session.refresh(profile)
+        await commit_session(session)
+        await refresh_session(session, profile)
         return profile

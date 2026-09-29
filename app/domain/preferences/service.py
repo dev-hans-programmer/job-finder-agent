@@ -10,6 +10,7 @@ from app.domain.preferences.schemas import (
     PreferenceResponse,
     normalize_preferences,
 )
+from app.errors.exceptions import ActivePreferenceNotFound
 from app.repositories.preferences import PreferenceRepository
 
 
@@ -17,12 +18,10 @@ class PreferenceService:
     def __init__(self, repository: PreferenceRepository):
         self.repository = repository
 
-    async def get_active(
-        self, session: AsyncSession, user_id: uuid.UUID
-    ) -> PreferenceResponse | None:
+    async def get_active(self, session: AsyncSession, user_id: uuid.UUID) -> PreferenceResponse:
         profile = await self.repository.get_active(session, user_id)
         if profile is None:
-            return None
+            raise ActivePreferenceNotFound()
         return PreferenceResponse(
             **profile.config,
             version=profile.version,

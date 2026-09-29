@@ -2,14 +2,14 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.responses import SuccessResponse, success_response
 from app.dependencies.auth import user_id_from_current_user
 from app.dependencies.database import get_session
-from app.ingestion.models import IngestionRun
-from app.repositories.sources import SourceRepository
+from app.dependencies.sources import get_ingestion_service
+from app.domain.jobs.ingestion_service import IngestionService
 
 router = APIRouter(prefix="/api/v1/runs", tags=["runs"])
 
@@ -20,10 +20,9 @@ async def get_run(
     request: Request,
     user_id: uuid.UUID = Depends(user_id_from_current_user),
     session: AsyncSession = Depends(get_session),
+    service: IngestionService = Depends(get_ingestion_service),
 ) -> SuccessResponse[dict]:
-    run: IngestionRun | None = await SourceRepository().get_run_for_user(session, run_id, user_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="run not found")
+    run = await service.get_run_for_user(session, run_id, user_id)
     return success_response(
         {
             "id": str(run.id),

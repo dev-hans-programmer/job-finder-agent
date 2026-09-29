@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.preferences.schemas import DEFAULT_WEIGHTS, normalize_preferences
 from app.domain.preferences.v2_schemas import V2PreferenceResponse, to_v2_response
+from app.errors.exceptions import ActivePreferenceNotFound
 from app.repositories.preferences import PreferenceRepository
 
 
@@ -11,11 +12,11 @@ class V2PreferenceService:
     def __init__(self, repository: PreferenceRepository):
         self.repository = repository
 
-    async def get_active(
-        self, session: AsyncSession, user_id: uuid.UUID
-    ) -> V2PreferenceResponse | None:
+    async def get_active(self, session: AsyncSession, user_id: uuid.UUID) -> V2PreferenceResponse:
         profile = await self.repository.get_active(session, user_id)
-        return None if profile is None else to_v2_response(profile)
+        if profile is None:
+            raise ActivePreferenceNotFound()
+        return to_v2_response(profile)
 
     async def update(
         self, session: AsyncSession, user_id: uuid.UUID, preferences

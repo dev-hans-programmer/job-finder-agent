@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.responses import SuccessResponse, success_response
@@ -88,8 +88,6 @@ async def get_job(
     service: JobQueryService = Depends(get_job_query_service),
 ) -> SuccessResponse[dict]:
     detail = await service.detail(session, user_id, job_id)
-    if detail is None:
-        raise HTTPException(status_code=404, detail="job not found")
     feedback = detail["feedback"]
     return success_response(
         {
@@ -111,10 +109,8 @@ async def get_match(
     session: AsyncSession = Depends(get_session),
     service: JobQueryService = Depends(get_job_query_service),
 ) -> SuccessResponse[dict]:
-    detail = await service.detail(session, user_id, job_id)
-    if detail is None or detail["match"] is None:
-        raise HTTPException(status_code=404, detail="match not found")
-    return success_response(_match_payload(detail["match"]), request)
+    match = await service.latest_match(session, user_id, job_id)
+    return success_response(_match_payload(match), request)
 
 
 @router.post("/{job_id}/feedback", status_code=status.HTTP_200_OK)
@@ -127,8 +123,6 @@ async def save_feedback(
     service: JobQueryService = Depends(get_job_query_service),
 ) -> SuccessResponse[dict]:
     feedback = await service.feedback(session, user_id, job_id, data)
-    if feedback is None:
-        raise HTTPException(status_code=404, detail="job not found")
     return success_response(
         {
             "id": str(feedback.id),
@@ -149,8 +143,6 @@ async def match_job(
     user_id: uuid.UUID = Depends(user_id_from_current_user),
 ) -> SuccessResponse[dict]:
     result = await service.match_job(session, job_id, user_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="job or active preferences not found")
     return success_response(
         {
             "id": str(result.id),

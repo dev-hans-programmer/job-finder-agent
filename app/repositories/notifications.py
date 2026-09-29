@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.notifications.models import NotificationDelivery
+from app.errors.database import commit_session, refresh_session
 
 
 class NotificationRepository:
@@ -16,8 +17,8 @@ class NotificationRepository:
             return row, False
         row = NotificationDelivery(**values)
         session.add(row)
-        await session.commit()
-        await session.refresh(row)
+        await commit_session(session)
+        await refresh_session(session, row)
         return row, True
 
     async def get(self, session: AsyncSession, delivery_id: uuid.UUID):

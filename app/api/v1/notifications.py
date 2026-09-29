@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.responses import SuccessResponse, success_response
@@ -21,8 +21,6 @@ async def get_delivery(
     user_id: uuid.UUID = Depends(user_id_from_current_user),
 ) -> SuccessResponse[dict]:
     delivery = await service.get_for_user(session, delivery_id, user_id)
-    if delivery is None:
-        raise HTTPException(status_code=404, detail="notification delivery not found")
     return success_response(
         {
             "id": str(delivery.id),

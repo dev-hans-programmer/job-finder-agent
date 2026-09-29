@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from redis.asyncio import Redis
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.config import Settings
+from app.errors.database import raise_database_error
 from app.observability.telemetry import instrument_engine
 
 
@@ -28,7 +30,10 @@ class RuntimeResources:
 @asynccontextmanager
 async def session_scope(resources: RuntimeResources) -> AsyncGenerator[AsyncSession, None]:
     async with resources.session_factory() as session:
-        yield session
+        try:
+            yield session
+        except SQLAlchemyError as error:
+            await raise_database_error(session, error)
 
 
 async def check_postgres(resources: RuntimeResources) -> bool:

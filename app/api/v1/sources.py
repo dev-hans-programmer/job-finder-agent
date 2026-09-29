@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.responses import SuccessResponse, success_response
@@ -52,12 +52,7 @@ async def run_source(
     session: AsyncSession = Depends(get_session),
     service: IngestionService = Depends(get_ingestion_service),
 ) -> RunResponse:
-    try:
-        run = await service.start_run(session, source_id, user_id)
-    except LookupError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+    run = await service.start_run(session, source_id, user_id)
     if not getattr(run, "already_running", False):
         run_ingestion.delay(str(source_id), str(run.id))
     return success_response(RunResponse(run_id=str(run.id), status=run.status), request)

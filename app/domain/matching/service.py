@@ -6,6 +6,7 @@ from app.domain.jobs.models import Job
 from app.domain.matching.models import MatchResult
 from app.domain.preferences.models import PreferenceProfile
 from app.domain.preferences.schemas import PreferenceInput
+from app.errors.exceptions import ActivePreferenceNotFound, JobNotFound
 from app.matching.rule_engine import evaluate_rules
 from app.repositories.jobs import JobRepository
 from app.repositories.matching import MatchingRepository
@@ -20,11 +21,13 @@ class MatchingService:
 
     async def match_job(
         self, session: AsyncSession, job_id: uuid.UUID, user_id: uuid.UUID
-    ) -> MatchResult | None:
+    ) -> MatchResult:
         job = await self.jobs.get(session, job_id)
+        if job is None:
+            raise JobNotFound()
         profile = await self.preferences.get_active(session, user_id)
-        if job is None or profile is None:
-            return None
+        if profile is None:
+            raise ActivePreferenceNotFound()
         return await self.evaluate(session, job, profile)
 
     async def evaluate(
